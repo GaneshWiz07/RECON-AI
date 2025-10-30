@@ -51,11 +51,19 @@ def initialize_firebase() -> None:
         if private_key:
             private_key = private_key.replace('\\n', '\n')
 
+        # Complete service account credentials dictionary
+        # Firebase requires these specific fields
         cred_dict = {
             "type": "service_account",
             "project_id": project_id,
+            "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID", "dummy_key_id"),
             "private_key": private_key,
             "client_email": client_email,
+            "client_id": os.getenv("FIREBASE_CLIENT_ID", "123456789"),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email}"
         }
 
         cred = credentials.Certificate(cred_dict)
@@ -115,18 +123,6 @@ async def verify_firebase_token(token: str) -> Dict:
         raise HTTPException(
             status_code=401,
             detail="Invalid authentication token"
-        )
-    except auth.ExpiredIdTokenError:
-        logger.warning("Expired Firebase ID token")
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication token has expired"
-        )
-    except auth.RevokedIdTokenError:
-        logger.warning("Revoked Firebase ID token")
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication token has been revoked"
         )
     except Exception as e:
         logger.error(f"Token verification failed: {str(e)}")

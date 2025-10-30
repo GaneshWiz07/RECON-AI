@@ -31,9 +31,12 @@ api.interceptors.request.use(
 
         // Add token to Authorization header
         config.headers.Authorization = `Bearer ${token}`;
+        console.log('✅ Added auth token to request:', config.url);
       } catch (error) {
-        console.error('Failed to get ID token:', error);
+        console.error('❌ Failed to get ID token:', error);
       }
+    } else {
+      console.warn('⚠️ No authenticated user for request:', config.url);
     }
 
     return config;

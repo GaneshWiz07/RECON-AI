@@ -6,7 +6,8 @@ Handles Stripe integration for subscription management
 
 import os
 import logging
-from fastapi import APIRouter, Request, HTTPException
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Request, HTTPException, Header
 from pydantic import BaseModel
 import stripe
 
@@ -58,15 +59,17 @@ async def get_subscription(request: Request):
 
                 # Get payment method
                 if subscription.default_payment_method:
-                    payment_method = stripe.PaymentMethod.retrieve(subscription.default_payment_method)
-                    subscription_data["payment_method"] = {
-                        "brand": payment_method.card.brand,
-                        "last4": payment_method.card.last4,
-                        "exp_month": payment_method.card.exp_month,
-                        "exp_year": payment_method.card.exp_year,
-                    }
-            except stripe.error.StripeError as e:
-                logger.error(f"Stripe API error: {str(e)}")
+                    pm_id = str(subscription.default_payment_method)
+                    payment_method = stripe.PaymentMethod.retrieve(pm_id)
+                    if payment_method.card:
+                        subscription_data["payment_method"] = {
+                            "brand": payment_method.card.brand if hasattr(payment_method.card, 'brand') else 'unknown',
+                            "last4": payment_method.card.last4 if hasattr(payment_method.card, 'last4') else '****',
+                            "exp_month": payment_method.card.exp_month if hasattr(payment_method.card, 'exp_month') else 0,
+                            "exp_year": payment_method.card.exp_year if hasattr(payment_method.card, 'exp_year') else 0,
+                        }
+            except Exception as stripe_error:
+                logger.error(f"Stripe API error: {str(stripe_error)}")
 
         return {"data": subscription_data}
 
@@ -139,9 +142,6 @@ async def create_checkout_session(request: Request, checkout_request: CheckoutRe
 
     except HTTPException:
         raise
-    except stripe.error.StripeError as e:
-        logger.error(f"Stripe error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Payment processing error")
     except Exception as e:
         logger.error(f"Failed to create checkout: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create checkout session")
@@ -177,9 +177,6 @@ async def cancel_subscription(request: Request):
 
     except HTTPException:
         raise
-    except stripe.error.StripeError as e:
-        logger.error(f"Stripe error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to cancel subscription")
     except Exception as e:
         logger.error(f"Failed to cancel subscription: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to cancel subscription")
@@ -222,3 +219,151 @@ async def get_usage(request: Request):
     except Exception as e:
         logger.error(f"Failed to get usage: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve usage")
+
+
+@router.post("/webhooks/stripe")
+async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
+    """
+    Handle Stripe webhook events.
+    
+    Processes subscription lifecycle events:
+    - subscription.created
+    - subscription.updated
+    - subscription.deleted
+    - invoice.payment_succeeded
+    - invoice.payment_failed
+    """
+    try:
+        # Get webhook secret
+        webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+        if not webhook_secret:
+            logger.error("Stripe webhook secret not configured")
+            raise HTTPException(status_code=500, detail="Webhook not configured")
+        
+        # Get raw body
+        payload = await request.body()
+        
+        # Verify signature
+        try:
+            event = stripe.Webhook.construct_event(  # type: ignore
+                payload, stripe_signature, webhook_secret
+            )
+        except Exception:  # type: ignore
+            logger.error("Invalid Stripe signature")
+            raise HTTPException(status_code=400, detail="Invalid signature")
+        
+        # Handle event
+        event_type = event["type"]
+        data = event["data"]["object"]
+        
+        users_collection = get_collection("users")
+        
+        if event_type == "checkout.session.completed":
+            # Payment successful - activate subscription
+            customer_id = data["customer"]
+            subscription_id = data["subscription"]
+            
+            # Get user by customer ID
+            user_doc = await users_collection.find_one({"stripe_customer_id": customer_id})
+            if user_doc:
+                # Update user subscription
+                await users_collection.update_one(
+                    {"uid": user_doc["uid"]},
+                    {
+                        "$set": {
+                            "plan": "pro",
+                            "subscription_status": "active",
+                            "stripe_subscription_id": subscription_id,
+                            "scan_credits_limit": 999999,  # Unlimited for Pro
+                            "api_calls_limit": 999999,     # Unlimited for Pro
+                            "updated_at": datetime.utcnow()
+                        }
+                    }
+                )
+                logger.info(f"Activated Pro subscription for user {user_doc['uid']}")
+        
+        elif event_type == "customer.subscription.updated":
+            # Subscription updated
+            subscription_id = data["id"]
+            status = data["status"]
+            
+            user_doc = await users_collection.find_one({"stripe_subscription_id": subscription_id})
+            if user_doc:
+                await users_collection.update_one(
+                    {"uid": user_doc["uid"]},
+                    {
+                        "$set": {
+                            "subscription_status": status,
+                            "updated_at": datetime.utcnow()
+                        }
+                    }
+                )
+                logger.info(f"Updated subscription status to {status} for user {user_doc['uid']}")
+        
+        elif event_type == "customer.subscription.deleted":
+            # Subscription cancelled
+            subscription_id = data["id"]
+            
+            user_doc = await users_collection.find_one({"stripe_subscription_id": subscription_id})
+            if user_doc:
+                # Downgrade to free plan
+                await users_collection.update_one(
+                    {"uid": user_doc["uid"]},
+                    {
+                        "$set": {
+                            "plan": "free",
+                            "subscription_status": "cancelled",
+                            "stripe_subscription_id": None,
+                            "scan_credits_limit": 10,
+                            "api_calls_limit": 100,
+                            "updated_at": datetime.utcnow()
+                        }
+                    }
+                )
+                logger.info(f"Downgraded user {user_doc['uid']} to free plan")
+        
+        elif event_type == "invoice.payment_succeeded":
+            # Payment succeeded - reset usage
+            subscription_id = data["subscription"]
+            
+            user_doc = await users_collection.find_one({"stripe_subscription_id": subscription_id})
+            if user_doc:
+                # Reset monthly usage
+                next_reset = datetime.utcnow() + timedelta(days=30)
+                await users_collection.update_one(
+                    {"uid": user_doc["uid"]},
+                    {
+                        "$set": {
+                            "scan_credits_used": 0,
+                            "api_calls_used": 0,
+                            "usage_reset_at": next_reset,
+                            "updated_at": datetime.utcnow()
+                        }
+                    }
+                )
+                logger.info(f"Reset usage for user {user_doc['uid']}")
+        
+        elif event_type == "invoice.payment_failed":
+            # Payment failed
+            subscription_id = data["subscription"]
+            
+            user_doc = await users_collection.find_one({"stripe_subscription_id": subscription_id})
+            if user_doc:
+                await users_collection.update_one(
+                    {"uid": user_doc["uid"]},
+                    {
+                        "$set": {
+                            "subscription_status": "past_due",
+                            "updated_at": datetime.utcnow()
+                        }
+                    }
+                )
+                logger.warning(f"Payment failed for user {user_doc['uid']}")
+        
+        return {"status": "success"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Webhook error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Webhook processing failed")

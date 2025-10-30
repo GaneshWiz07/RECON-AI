@@ -12,7 +12,7 @@ ReconAI is a comprehensive Micro-SaaS platform that discovers, enriches, and ana
 ## 🌟 Features
 
 ### Core Capabilities
-- **Asset Discovery**: Automated discovery using Censys and Shodan APIs
+- **Asset Discovery**: Automated discovery using Censys API
 - **Risk Scoring**: ML-powered risk assessment (0-100 scale)
 - **Real-time Dashboard**: Interactive analytics with trend visualization
 - **Multi-tenant Architecture**: Secure workspace isolation
@@ -32,7 +32,7 @@ ReconAI is a comprehensive Micro-SaaS platform that discovers, enriches, and ana
 ## 🏗️ Architecture
 
 ```
-User → React (Firebase SDK) → FastAPI API (Firebase token verified) → MongoDB / Redis / ML / Stripe
+User → React (Firebase SDK) → FastAPI API (Firebase token verified) → MongoDB / ML / Stripe
 ```
 
 ### Tech Stack
@@ -40,7 +40,6 @@ User → React (Firebase SDK) → FastAPI API (Firebase token verified) → Mong
 **Backend:**
 - FastAPI (Python 3.11+, async/await)
 - MongoDB Atlas (user data, assets, risk scores)
-- Redis (rate limiting, task queue, caching)
 - scikit-learn (Logistic Regression for risk scoring)
 - Firebase Admin SDK (authentication)
 
@@ -53,7 +52,6 @@ User → React (Firebase SDK) → FastAPI API (Firebase token verified) → Mong
 
 **External APIs:**
 - Censys (asset discovery)
-- Shodan (asset discovery)
 - HaveIBeenPwned (breach history)
 - Stripe (payments)
 
@@ -61,7 +59,6 @@ User → React (Firebase SDK) → FastAPI API (Firebase token verified) → Mong
 - Backend: Render
 - Frontend: Netlify
 - Database: MongoDB Atlas
-- Cache/Queue: Redis Cloud
 
 ## 📦 Project Structure
 
@@ -74,23 +71,19 @@ RECON-AI/
 │   │   │   ├── assets.py       # Asset management
 │   │   │   ├── analytics.py    # Dashboard analytics
 │   │   │   └── billing.py      # Stripe integration
-│   │   ├── collectors/         # External API collectors
-│   │   │   ├── censys_collector.py
-│   │   │   ├── shodan_collector.py
-│   │   │   ├── merger.py       # Result merging
-│   │   │   └── enrichers.py    # Data enrichment
+│   │   ├── collectors/         # Data collectors
+│   │   │   ├── censys_collector.py  # Censys API integration
+│   │   │   └── enrichers.py         # Data enrichment
 │   │   ├── core/               # Core infrastructure
 │   │   │   ├── firebase.py     # Firebase Admin SDK
-│   │   │   ├── database.py     # MongoDB connection
-│   │   │   └── redis_client.py # Redis connection
+│   │   │   └── database.py     # MongoDB connection
 │   │   ├── middleware/         # Middleware
 │   │   │   └── auth.py         # Firebase auth middleware
 │   │   ├── ml/                 # Machine learning
 │   │   │   ├── train_model.py  # Model training
 │   │   │   └── models/         # Trained models
 │   │   ├── tasks/              # Background workers
-│   │   │   ├── scan_worker.py  # Scan executor
-│   │   │   └── scheduler.py    # Rescan scheduler
+│   │   │   └── scan_worker.py  # Scan executor
 │   │   └── main.py             # FastAPI application
 │   ├── Dockerfile
 │   └── requirements.txt
@@ -127,10 +120,8 @@ RECON-AI/
 - Python 3.11+
 - Node.js 18+
 - MongoDB Atlas account
-- Redis instance (local or cloud)
 - Firebase project (with Authentication enabled)
-- Censys API credentials
-- Shodan API key
+- Censys API credentials (optional)
 - Stripe account (for billing)
 
 ### 1. Firebase Setup
@@ -160,23 +151,7 @@ RECON-AI/
 
 3. Whitelist your IP address (or use 0.0.0.0/0 for testing)
 
-### 3. Redis Setup
-
-**Option A: Local Redis**
-```bash
-# Install Redis (macOS)
-brew install redis
-redis-server
-
-# Or using Docker
-docker run -d -p 6379:6379 redis:latest
-```
-
-**Option B: Redis Cloud**
-- Sign up at [https://redis.com/try-free/](https://redis.com/try-free/)
-- Create a database and get connection URL
-
-### 4. Backend Setup
+### 3. Backend Setup
 
 ```bash
 # Navigate to backend directory
@@ -200,16 +175,6 @@ nano .env
 ```bash
 # MongoDB
 MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/reconai
-
-# Redis
-REDIS_URL=redis://localhost:6379  # or your Redis Cloud URL
-
-# Censys API (get from https://search.censys.io/account/api)
-CENSYS_API_ID=your_censys_id
-CENSYS_API_SECRET=your_censys_secret
-
-# Shodan API (get from https://account.shodan.io/)
-SHODAN_API_KEY=your_shodan_key
 
 # Firebase Admin SDK (from service account JSON)
 FIREBASE_PROJECT_ID=your-project-id
@@ -236,12 +201,7 @@ python -m app.ml.train_model
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Start background worker (separate terminal):**
-```bash
-rq worker scan_queue --with-scheduler
-```
-
-### 5. Frontend Setup
+### 4. Frontend Setup
 
 ```bash
 # Navigate to frontend directory
@@ -338,7 +298,6 @@ Full API documentation available at `/docs` when running the backend.
 - Tokens stored in memory only (not localStorage)
 - HTTPS required in production
 - MongoDB connection uses TLS
-- Redis uses authentication
 - Stripe webhook signature verification
 - Rate limiting on all API endpoints
 
@@ -451,14 +410,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Verify connection string is correct
 - Ensure database user has read/write permissions
 
-**"Redis connection refused"**
-- Ensure Redis server is running (local or cloud)
-- Check `REDIS_URL` format
-
 **"Collector returns no results"**
-- Verify Censys and Shodan API credentials
-- Check API quotas (free tiers have limits)
-- Test credentials directly with API documentation
+- Verify Censys API credentials are correct
+- Check API quotas (free tier has limits)
+- Ensure domain has exposed services/certificates
 
 **"Frontend can't connect to backend"**
 - Ensure backend is running on correct port
@@ -475,7 +430,7 @@ For issues, questions, or feature requests:
 ## 🙏 Acknowledgments
 
 - Firebase for authentication infrastructure
-- Censys and Shodan for asset discovery data
+- Censys for asset discovery data
 - MongoDB Atlas for database hosting
 - Stripe for payment processing
 - Open source community for amazing libraries

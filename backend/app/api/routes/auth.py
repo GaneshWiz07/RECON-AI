@@ -7,10 +7,11 @@ Handles user registration, login, and profile retrieval.
 import logging
 from datetime import datetime, timedelta
 from typing import Dict
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Header
 from pydantic import BaseModel
 
 from app.core.database import get_collection
+from app.core.firebase import verify_firebase_token
 from app.middleware.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -47,11 +48,11 @@ class LoginResponse(BaseModel):
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)
-async def register_user(request: Request):
+async def register_user(request: Request, authorization: str = Header(None)):
     """
     Create new user account after Firebase signup.
 
-    User info is extracted from the verified Firebase token (set by middleware).
+    User info is extracted from the verified Firebase token.
     Creates user document in MongoDB with default free plan values.
 
     Returns:
@@ -59,8 +60,13 @@ async def register_user(request: Request):
         409: User already exists
         500: Database error
     """
-    # Get user info from Firebase token (verified by middleware)
-    user_info = get_current_user(request)
+    # Manually verify Firebase token (route is public)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No authentication token provided")
+    
+    token = authorization.split("Bearer ", 1)[1]
+    user_info = await verify_firebase_token(token)
+    
     uid = user_info["uid"]
     email = user_info["email"]
 
@@ -141,7 +147,7 @@ async def register_user(request: Request):
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login_user(request: Request):
+async def login_user(request: Request, authorization: str = Header(None)):
     """
     Sync user data on login (creates user if first OAuth login).
 
@@ -150,11 +156,16 @@ async def login_user(request: Request):
 
     Returns:
         200: Login successful
-        401: Invalid token (handled by middleware)
+        401: Invalid token
         500: Database error
     """
-    # Get user info from Firebase token (verified by middleware)
-    user_info = get_current_user(request)
+    # Manually verify Firebase token (route is public)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No authentication token provided")
+    
+    token = authorization.split("Bearer ", 1)[1]
+    user_info = await verify_firebase_token(token)
+    
     uid = user_info["uid"]
     email = user_info["email"]
 

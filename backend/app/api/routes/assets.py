@@ -9,7 +9,6 @@ from fastapi import APIRouter, Request, HTTPException, Query
 from pydantic import BaseModel
 
 from app.core.database import get_collection
-from app.core.redis_client import get_redis_queue
 from app.middleware.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -34,8 +33,8 @@ class ScanResponse(BaseModel):
 async def start_asset_scan(request: Request, scan_request: ScanRequest):
     """
     Start new asset discovery scan for a domain.
-
-    Checks user credits, creates scan record, and queues scan job.
+    
+    Runs scan directly as background task.
     """
     user = get_current_user(request)
     uid = user["uid"]
@@ -44,20 +43,24 @@ async def start_asset_scan(request: Request, scan_request: ScanRequest):
         users_collection = get_collection("users")
         scans_collection = get_collection("scans")
 
-        # Get user to check credits
+        # Get user to check plan and credits
         user_doc = await users_collection.find_one({"uid": uid})
         if not user_doc:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Check scan credits
-        credits_used = user_doc.get("scan_credits_used", 0)
-        credits_limit = user_doc.get("scan_credits_limit", 10)
+        user_plan = user_doc.get("plan", "free")
+        
+        # Check scan credits (only for Free users)
+        if user_plan == "free":
+            credits_used = user_doc.get("scan_credits_used", 0)
+            credits_limit = user_doc.get("scan_credits_limit", 10)
 
-        if credits_used >= credits_limit:
-            raise HTTPException(
-                status_code=402,
-                detail=f"Insufficient scan credits. Upgrade to Pro for more credits."
-            )
+            if credits_used >= credits_limit:
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Manual scan limit reached ({credits_limit} scans). Upgrade to Pro for unlimited manual scans and continuous monitoring."
+                )
+        # Pro users have unlimited manual scans
 
         # Create scan record
         scan_id = f"scn_{datetime.utcnow().timestamp()}"
@@ -76,21 +79,20 @@ async def start_asset_scan(request: Request, scan_request: ScanRequest):
 
         await scans_collection.insert_one(scan_doc)
 
-        # Increment scan credits used
-        await users_collection.update_one(
-            {"uid": uid},
-            {"$inc": {"scan_credits_used": 1}}
-        )
+        # Increment scan credits used (only for Free users)
+        if user_plan == "free":
+            await users_collection.update_one(
+                {"uid": uid},
+                {"$inc": {"scan_credits_used": 1}}
+            )
 
-        # Queue scan job in Redis
-        try:
-            queue = get_redis_queue()
-            from app.tasks.scan_worker import execute_scan
-            queue.enqueue(execute_scan, scan_id, scan_request.domain, uid)
-            logger.info(f"Queued scan job: {scan_id} for {scan_request.domain}")
-        except Exception as e:
-            logger.error(f"Failed to queue scan job: {str(e)}")
-            # Note: Scan record created but job not queued - could implement retry
+        # Run scan directly as background task
+        import asyncio
+        from app.tasks.scan_worker import _execute_scan_async
+        
+        # Create background task to run scan
+        asyncio.create_task(_execute_scan_async(scan_id, scan_request.domain, uid))
+        logger.info(f"Started scan job: {scan_id} for {scan_request.domain}")
 
         # Estimate completion time (2-5 minutes)
         estimated_completion = datetime.utcnow()

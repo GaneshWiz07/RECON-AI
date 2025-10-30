@@ -11,13 +11,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
 from dotenv import load_dotenv
 
 from app.core.firebase import initialize_firebase
 from app.core.database import connect_to_mongodb, close_mongodb_connection, check_database_health
-from app.core.redis_client import connect_to_redis, close_redis_connection, check_redis_health
 from app.middleware.auth import FirebaseAuthMiddleware
 from app.api.routes import auth, assets, analytics, billing
 
@@ -31,17 +28,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize Sentry if DSN is provided
-sentry_dsn = os.getenv("SENTRY_DSN")
-if sentry_dsn:
-    sentry_sdk.init(
-        dsn=sentry_dsn,
-        integrations=[FastApiIntegration()],
-        traces_sample_rate=0.1,
-        environment=os.getenv("ENVIRONMENT", "development")
-    )
-    logger.info("Sentry initialized for error tracking")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,7 +35,7 @@ async def lifespan(app: FastAPI):
     Application lifespan context manager.
 
     Handles startup and shutdown events:
-    - Startup: Initialize Firebase, MongoDB, Redis
+    - Startup: Initialize Firebase, MongoDB
     - Shutdown: Close database connections
     """
     # Startup
@@ -64,10 +50,6 @@ async def lifespan(app: FastAPI):
         await connect_to_mongodb()
         logger.info("✓ MongoDB connected")
 
-        # Connect to Redis
-        connect_to_redis()
-        logger.info("✓ Redis connected")
-
         logger.info("ReconAI Backend started successfully")
 
     except Exception as e:
@@ -81,7 +63,6 @@ async def lifespan(app: FastAPI):
 
     try:
         await close_mongodb_connection()
-        close_redis_connection()
         logger.info("All connections closed successfully")
 
     except Exception as e:
@@ -137,14 +118,8 @@ async def health_check():
         # Check database
         db_health = await check_database_health()
 
-        # Check Redis
-        redis_health = await check_redis_health()
-
         # Determine overall status
-        all_healthy = (
-            db_health.get("status") == "connected" and
-            redis_health.get("status") == "connected"
-        )
+        all_healthy = db_health.get("status") == "connected"
 
         status_code = 200 if all_healthy else 503
 
@@ -154,11 +129,9 @@ async def health_check():
                 "status": "healthy" if all_healthy else "degraded",
                 "services": {
                     "mongodb": db_health.get("status"),
-                    "redis": redis_health.get("status"),
                 },
                 "details": {
                     "mongodb": db_health,
-                    "redis": redis_health,
                 }
             }
         )

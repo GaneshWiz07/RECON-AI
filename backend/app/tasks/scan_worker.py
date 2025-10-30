@@ -8,22 +8,114 @@ import logging
 import asyncio
 from datetime import datetime
 from app.core.database import get_collection
-from app.collectors.censys_collector import CensysCollector
-from app.collectors.shodan_collector import ShodanCollector
-from app.collectors.merger import merge_collector_results
+from app.collectors.free_collector import FreeCollector
 from app.collectors.enrichers import (
     enrich_dns,
     check_security_headers,
     check_breach_history,
     detect_outdated_software
 )
+from app.ml.predict import predict_risk_score, get_risk_level
+from app.detectors import (
+    WebHeaderAnalyzer,
+    SSLInspector,
+    DNSMisconfigDetector,
+    CloudBucketChecker,
+    SecurityFileChecker,
+    OpenDirectoryDetector
+)
 
 logger = logging.getLogger(__name__)
 
 
+async def run_misconfiguration_detectors(asset_value: str) -> dict:
+    """
+    Run all misconfiguration detectors on an asset
+    
+    Args:
+        asset_value: The asset URL/domain to check
+        
+    Returns:
+        Dictionary with all misconfiguration findings
+    """
+    misconfigurations = {
+        'total_issues': 0,
+        'severity': 'low',
+        'web_headers': {},
+        'ssl': {},
+        'dns': {},
+        'cloud_buckets': {},
+        'security_files': {},
+        'open_directories': {}
+    }
+    
+    try:
+        # Run all detectors concurrently for better performance
+        results = await asyncio.gather(
+            WebHeaderAnalyzer.analyze(asset_value),
+            SSLInspector.inspect(asset_value),
+            DNSMisconfigDetector.detect(asset_value),
+            CloudBucketChecker.check(asset_value),
+            SecurityFileChecker.check(asset_value),
+            OpenDirectoryDetector.detect(asset_value),
+            return_exceptions=True
+        )
+        
+        # Unpack results
+        web_headers, ssl, dns, cloud_buckets, security_files, open_dirs = results
+        
+        # Process each detector result
+        if not isinstance(web_headers, Exception):
+            misconfigurations['web_headers'] = web_headers
+            if web_headers.get('has_issues'):
+                misconfigurations['total_issues'] += len(web_headers.get('missing_headers', []))
+                if web_headers['severity'] in ['critical', 'high']:
+                    misconfigurations['severity'] = web_headers['severity']
+        
+        if not isinstance(ssl, Exception):
+            misconfigurations['ssl'] = ssl
+            if ssl.get('has_issues'):
+                misconfigurations['total_issues'] += len(ssl.get('issues', []))
+                if ssl['severity'] == 'critical' or (ssl['severity'] == 'high' and misconfigurations['severity'] != 'critical'):
+                    misconfigurations['severity'] = ssl['severity']
+        
+        if not isinstance(dns, Exception):
+            misconfigurations['dns'] = dns
+            if dns.get('has_issues'):
+                misconfigurations['total_issues'] += len(dns.get('issues', []))
+                if dns['severity'] == 'critical':
+                    misconfigurations['severity'] = 'critical'
+        
+        if not isinstance(cloud_buckets, Exception):
+            misconfigurations['cloud_buckets'] = cloud_buckets
+            if cloud_buckets.get('has_issues'):
+                misconfigurations['total_issues'] += len(cloud_buckets.get('buckets', []))
+                misconfigurations['severity'] = 'critical'
+        
+        if not isinstance(security_files, Exception):
+            misconfigurations['security_files'] = security_files
+            if security_files.get('has_issues'):
+                misconfigurations['total_issues'] += len(security_files.get('sensitive_exposed', []))
+                if security_files['severity'] == 'critical':
+                    misconfigurations['severity'] = 'critical'
+        
+        if not isinstance(open_dirs, Exception):
+            misconfigurations['open_directories'] = open_dirs
+            if open_dirs.get('has_issues'):
+                misconfigurations['total_issues'] += len(open_dirs.get('open_directories', []))
+                if open_dirs['severity'] in ['critical', 'high'] and misconfigurations['severity'] not in ['critical']:
+                    misconfigurations['severity'] = open_dirs['severity']
+        
+    except Exception as e:
+        logger.error(f"Error running misconfiguration detectors: {str(e)}")
+        misconfigurations['error'] = str(e)
+    
+    return misconfigurations
+
+
 def execute_scan(scan_id: str, domain: str, user_id: str):
     """
-    Execute asset discovery scan (sync wrapper for RQ).
+    Execute asset discovery scan (sync wrapper).
 
     Args:
         scan_id: Scan identifier
@@ -40,12 +132,11 @@ async def _execute_scan_async(scan_id: str, domain: str, user_id: str):
 
     Process:
     1. Update scan status to "running"
-    2. Run Censys and Shodan collectors in parallel
-    3. Merge results
-    4. Enrich each asset with DNS, security headers, breach data
-    5. Calculate risk scores (placeholder for Phase 3)
-    6. Save assets to MongoDB
-    7. Update scan status to "completed"
+    2. Run free collector (crt.sh + DNS)
+    3. Enrich each asset with DNS, security headers, breach data
+    4. Calculate risk scores
+    5. Save assets to MongoDB
+    6. Update scan status to "completed"
     """
     logger.info(f"Starting scan {scan_id} for domain {domain}")
 
@@ -64,33 +155,20 @@ async def _execute_scan_async(scan_id: str, domain: str, user_id: str):
             }
         )
 
-        # Initialize collectors
-        censys = CensysCollector()
-        shodan = ShodanCollector()
+        # Initialize free collector (no API keys needed!)
+        collector = FreeCollector()
 
-        # Run collectors in parallel
-        logger.info(f"Running collectors for {domain}")
-        censys_task = censys.search_domain(domain)
-        shodan_task = shodan.search_domain(domain)
+        # Run collector
+        logger.info(f"Running free collector for {domain}")
+        collector_results = await collector.search_domain(domain)
 
-        censys_results, shodan_results = await asyncio.gather(
-            censys_task,
-            shodan_task,
-            return_exceptions=True
-        )
+        # Handle collector failure
+        if isinstance(collector_results, Exception):
+            logger.error(f"Free collector failed: {str(collector_results)}")
+            collector_results = []
 
-        # Handle collector failures
-        if isinstance(censys_results, Exception):
-            logger.error(f"Censys collector failed: {str(censys_results)}")
-            censys_results = []
-
-        if isinstance(shodan_results, Exception):
-            logger.error(f"Shodan collector failed: {str(shodan_results)}")
-            shodan_results = []
-
-        # Merge results
-        logger.info(f"Merging results: {len(censys_results)} + {len(shodan_results)}")
-        merged_assets = merge_collector_results(censys_results, shodan_results)
+        # Use results directly
+        merged_assets = collector_results
 
         logger.info(f"Enriching {len(merged_assets)} assets")
 
@@ -115,10 +193,24 @@ async def _execute_scan_async(scan_id: str, domain: str, user_id: str):
                 outdated_count = detect_outdated_software(asset_data.get("technologies", []))
                 asset_data["outdated_software_count"] = outdated_count
 
-                # Calculate risk score (placeholder - will implement ML in Phase 3)
-                risk_score = _calculate_basic_risk_score(asset_data)
+                # Run misconfiguration detectors
+                misconfigurations = await run_misconfiguration_detectors(asset_data.get("asset_value", domain))
+                asset_data["misconfigurations"] = misconfigurations
+
+                # Calculate risk score using ML model
+                ml_risk_score, ml_risk_class = predict_risk_score(asset_data)
+                
+                if ml_risk_score is not None:
+                    # Use ML prediction
+                    risk_score = ml_risk_score
+                    logger.info(f"ML predicted risk score: {risk_score} for {asset_data.get('asset_value')}")
+                else:
+                    # Fallback to basic calculation if ML model not available
+                    risk_score = _calculate_basic_risk_score(asset_data)
+                    logger.warning(f"Using basic risk calculation (ML model not loaded) for {asset_data.get('asset_value')}")
+                
                 asset_data["risk_score"] = risk_score
-                asset_data["risk_level"] = _get_risk_level(risk_score)
+                asset_data["risk_level"] = get_risk_level(risk_score)
                 asset_data["risk_factors"] = _extract_risk_factors(asset_data)
 
                 # Generate asset ID

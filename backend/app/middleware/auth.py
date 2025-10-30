@@ -28,6 +28,7 @@ PUBLIC_ROUTES = [
 # Route prefixes that don't require authentication
 PUBLIC_PREFIXES = [
     "/api/webhooks",  # Stripe webhooks use signature verification
+    "/api/auth",      # Auth routes (register, login) handle their own token verification
 ]
 
 
@@ -53,6 +54,10 @@ class FirebaseAuthMiddleware(BaseHTTPMiddleware):
         Returns:
             Response from the route handler or error response
         """
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        
         # Check if route is public
         if self._is_public_route(request.url.path):
             return await call_next(request)

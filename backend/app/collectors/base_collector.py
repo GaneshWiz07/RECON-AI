@@ -1,7 +1,7 @@
 """
 Base Collector Abstract Class
 
-Defines the interface for all asset collectors (Censys, Shodan, etc.)
+Defines the interface for all asset collectors (Censys, etc.)
 """
 
 from abc import ABC, abstractmethod
@@ -50,7 +50,7 @@ class BaseCollector(ABC):
             },
             "http_status": 200,
             "server_header": "nginx/1.21.0",
-            "discovered_via": "censys",  # or "shodan"
+            "discovered_via": "censys",
             "raw_metadata": {}
         }
         """
