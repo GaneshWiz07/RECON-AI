@@ -19,7 +19,7 @@ from app.core.firebase import initialize_firebase
 from app.core.database import connect_to_mongodb, close_mongodb_connection, check_database_health
 from app.core.redis_client import connect_to_redis, close_redis_connection, check_redis_health
 from app.middleware.auth import FirebaseAuthMiddleware
-from app.api.routes import auth
+from app.api.routes import auth, assets
 
 # Load environment variables
 load_dotenv()
@@ -114,6 +114,7 @@ app.add_middleware(FirebaseAuthMiddleware)
 
 # Include routers
 app.include_router(auth.router)
+app.include_router(assets.router)
 
 # Health check endpoint (public - no auth required)
 @app.get("/health", tags=["system"])
