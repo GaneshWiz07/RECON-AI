@@ -15,6 +15,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: false, // Set to true if using cookies
 });
 
 // Request interceptor - Add Firebase ID token to all requests
@@ -100,9 +101,20 @@ api.interceptors.response.use(
     } else if (error.request) {
       // Request made but no response received
       console.error('No response from server:', error.message);
+      
+      // Check if it's a timeout
+      if (error.code === 'ECONNABORTED') {
+        return Promise.reject({
+          status: 0,
+          message: 'Request timeout. The server took too long to respond.',
+        });
+      }
+      
+      // Check if backend is down
       return Promise.reject({
         status: 0,
-        message: 'Unable to connect to server. Please check your internet connection.',
+        message: 'Unable to connect to server. Please ensure the backend is running on ' + 
+                 (import.meta.env.VITE_API_URL || 'http://localhost:8000'),
       });
     } else {
       // Something else happened

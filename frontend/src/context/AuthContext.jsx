@@ -84,19 +84,39 @@ export const AuthProvider = ({ children }) => {
    */
   const signInWithGoogle = async () => {
     try {
+      // Use popup for OAuth flow
       const userCredential = await signInWithPopup(auth, googleProvider);
       const token = await userCredential.user.getIdToken();
 
       // Call backend to sync user data (creates user if first time)
-      await api.post('/api/auth/login', {}, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      try {
+        await api.post('/api/auth/login', {}, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+      } catch (apiError) {
+        // If backend sync fails, still allow login but log the error
+        console.warn('Backend sync failed, but user is authenticated:', apiError);
+        // Don't throw - user is still authenticated on Firebase
+      }
 
       return userCredential.user;
     } catch (error) {
       console.error('Google sign in error:', error);
+      
+      // Provide user-friendly error messages
+      if (error.code === 'auth/popup-blocked') {
+        throw new Error('Popup was blocked. Please allow popups for this site.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        throw new Error('Sign-in was cancelled.');
+      } else if (error.code === 'auth/network-request-failed') {
+        throw new Error('Network error. Please check your connection and try again.');
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        // Don't show error for cancelled popup - user might be clicking multiple times
+        return null;
+      }
+      
       throw error;
     }
   };
