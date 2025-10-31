@@ -24,8 +24,58 @@ from app.detectors import (
     SecurityFileChecker,
     OpenDirectoryDetector
 )
+from app.services.email_service import email_service
 
 logger = logging.getLogger(__name__)
+
+
+async def _send_risk_alert_email(
+    user_id: str,
+    asset_value: str,
+    risk_score: int,
+    risk_level: str,
+    misconfigurations: dict,
+    scan_id: str
+):
+    """
+    Send email alert for high/critical risk detection
+    
+    Args:
+        user_id: User ID (Firebase UID)
+        asset_value: Asset that triggered the alert
+        risk_score: Risk score (0-100)
+        risk_level: Risk level (high/critical)
+        misconfigurations: Misconfiguration findings
+        scan_id: Scan identifier
+    """
+    try:
+        # Get user email from database
+        users_collection = get_collection("users")
+        user = await users_collection.find_one({"uid": user_id})
+        
+        if not user or not user.get("email"):
+            logger.warning(f"Cannot send alert: User {user_id} not found or has no email")
+            return
+        
+        user_email = user["email"]
+        
+        # Send alert email
+        success = await email_service.send_risk_alert(
+            to_email=user_email,
+            asset_value=asset_value,
+            risk_score=risk_score,
+            risk_level=risk_level,
+            misconfigurations=misconfigurations,
+            scan_id=scan_id
+        )
+        
+        if success:
+            logger.info(f"Alert email sent to {user_email} for {asset_value} ({risk_level} risk)")
+        else:
+            logger.warning(f"Failed to send alert email to {user_email}")
+            
+    except Exception as e:
+        logger.error(f"Error sending risk alert email: {str(e)}")
 
 
 async def run_misconfiguration_detectors(asset_value: str) -> dict:
@@ -212,6 +262,17 @@ async def _execute_scan_async(scan_id: str, domain: str, user_id: str):
                 asset_data["risk_score"] = risk_score
                 asset_data["risk_level"] = get_risk_level(risk_score)
                 asset_data["risk_factors"] = _extract_risk_factors(asset_data)
+
+                # Send email alert for high/critical risk
+                if asset_data["risk_level"] in ["high", "critical"]:
+                    await _send_risk_alert_email(
+                        user_id,
+                        asset_data.get("asset_value", domain),
+                        risk_score,
+                        asset_data["risk_level"],
+                        misconfigurations,
+                        scan_id
+                    )
 
                 # Generate asset ID
                 asset_id = f"ast_{datetime.utcnow().timestamp()}_{assets_saved}"

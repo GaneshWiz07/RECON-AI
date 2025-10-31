@@ -3,26 +3,27 @@
  * Matches UI mockup with split-screen design
  */
 
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Shield } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Mail, Lock, Target, ShieldCheck, TrendingUp } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
+import Logo from "../components/ui/Logo";
 
 const Login = () => {
   const navigate = useNavigate();
   const { signIn, signInWithGoogle, signUp } = useAuth();
 
   const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const handleEmailAuth = async (e) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
@@ -31,61 +32,116 @@ const Login = () => {
       } else {
         await signIn(email, password);
       }
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (err) {
-      setError(err.message || 'Authentication failed');
+      setError(err.message || "Authentication failed");
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
       await signInWithGoogle();
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (err) {
-      setError(err.message || 'Google sign-in failed');
+      setError(err.message || "Google sign-in failed");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-black flex">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900/20 to-gray-900 flex relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div
+          className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse"
+          style={{ animationDelay: "1s" }}
+        ></div>
+      </div>
+
       {/* Left side - Branding */}
-      <div className="w-1/2 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-black p-12">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center shadow-glow-blue">
-            <Shield className="w-7 h-7 text-white" />
+      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center p-12 relative z-10">
+        <div className="max-w-lg space-y-8 fade-in">
+          <Logo size="xl" className="mb-8" />
+
+          <div className="space-y-4">
+            <h1 className="text-5xl font-bold text-white leading-tight">
+              Automated Intelligence,
+              <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
+                Proactive Security
+              </span>
+            </h1>
+            <p className="text-xl text-gray-300 leading-relaxed">
+              Discover, analyze, and protect your digital assets with AI-powered
+              security intelligence.
+            </p>
           </div>
-          <h1 className="text-4xl font-bold text-white">ReconAI</h1>
+
+          {/* Feature List */}
+          <div className="space-y-4 pt-8">
+            {[
+              {
+                icon: <Target className="text-blue-400" size={24} />,
+                title: "Asset Discovery",
+                desc: "Automated reconnaissance and mapping",
+              },
+              {
+                icon: <ShieldCheck className="text-green-400" size={24} />,
+                title: "Threat Detection",
+                desc: "Real-time vulnerability scanning",
+              },
+              {
+                icon: <TrendingUp className="text-purple-400" size={24} />,
+                title: "Risk Analytics",
+                desc: "AI-powered risk assessment",
+              },
+            ].map((feature, idx) => (
+              <div
+                key={idx}
+                className="glass-card p-4 rounded-lg hover:border-blue-500/50 transition-all duration-300"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5">{feature.icon}</div>
+                  <div>
+                    <h3 className="text-white font-semibold">
+                      {feature.title}
+                    </h3>
+                    <p className="text-sm text-gray-400">{feature.desc}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <p className="text-xl text-gray-400 text-center max-w-md">
-          Automated Intelligence, Proactive Security.
-        </p>
-        <p className="text-sm text-gray-500 text-center max-w-md mt-4">
-          OSINT Platform
-        </p>
       </div>
 
       {/* Right side - Form */}
-      <div className="w-1/2 flex items-center justify-center bg-gray-900 p-12">
-        <div className="w-full max-w-md">
-          <h2 className="text-3xl font-bold text-white mb-2">
-            {isSignUp ? 'Create Account' : 'Welcome Back'}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 relative z-10">
+        <div className="w-full max-w-md glass-card p-8 sm:p-10 rounded-2xl scale-in">
+          {/* Mobile Logo */}
+          <div className="lg:hidden flex justify-center mb-8">
+            <Logo size="lg" />
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
+            {isSignUp ? "Create Account" : "Welcome Back"}
           </h2>
-          <p className="text-gray-400 mb-8">
+          <p className="text-sm sm:text-base text-gray-400 mb-6 sm:mb-8">
             {isSignUp
-              ? 'Sign up to start discovering and securing your assets'
-              : 'Enter your credentials to access your account.'}
+              ? "Sign up to start discovering and securing your assets"
+              : "Enter your credentials to access your account."}
           </p>
 
           {error && (
-            <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-lg">
-              <p className="text-danger text-sm">{error}</p>
+            <div className="mb-6 p-4 bg-red-900/20 border border-red-500 rounded-lg glass-card scale-in">
+              <p className="text-red-200 text-sm">{error}</p>
             </div>
           )}
 
@@ -114,7 +170,8 @@ const Login = () => {
               <div className="flex justify-end">
                 <button
                   type="button"
-                  className="text-sm text-primary hover:text-primary-light transition-colors"
+                  onClick={() => navigate("/forgot-password")}
+                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium"
                 >
                   Forgot Password?
                 </button>
@@ -129,16 +186,18 @@ const Login = () => {
               loading={loading}
               disabled={loading}
             >
-              {isSignUp ? 'Sign Up' : 'Sign In'}
+              {isSignUp ? "Sign Up" : "Sign In"}
             </Button>
           </form>
 
-          <div className="mt-6 relative">
+          <div className="mt-8 relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-700"></div>
+              <div className="w-full border-t border-white/10"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-gray-900 text-gray-400">OR</span>
+              <span className="px-4 bg-gray-800/40 text-gray-400 font-medium">
+                OR
+              </span>
             </div>
           </div>
 
@@ -174,15 +233,23 @@ const Login = () => {
           </Button>
 
           <div className="mt-8 text-center">
-            <p className="text-gray-400">
-              {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+            <p className="text-sm text-gray-400">
+              {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
               <button
                 type="button"
                 onClick={() => setIsSignUp(!isSignUp)}
-                className="text-primary hover:text-primary-light font-medium transition-colors"
+                className="text-blue-400 hover:text-blue-300 font-semibold transition-colors"
               >
-                {isSignUp ? 'Sign In' : 'Sign Up'}
+                {isSignUp ? "Sign In" : "Sign Up"}
               </button>
+            </p>
+          </div>
+
+          {/* Footer Info */}
+          <div className="mt-8 pt-6 border-t border-white/10 text-center">
+            <p className="text-xs text-gray-500">
+              By continuing, you agree to our Terms of Service and Privacy
+              Policy
             </p>
           </div>
         </div>

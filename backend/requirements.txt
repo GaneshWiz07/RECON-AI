@@ -29,6 +29,12 @@ aiohttp==3.9.1
 # Stripe
 stripe==7.8.0
 
+# Email
+sendgrid==6.11.0
+
+# PDF generation
+reportlab==4.0.7
+
 # Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4

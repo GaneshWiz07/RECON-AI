@@ -1,0 +1,114 @@
+# Environment Variables - CRITICAL: Never commit!
+.env
+.env.*
+!.env.example
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environments
+venv/
+ENV/
+env/
+.venv
+.env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.hypothesis/
+.cache
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# API Keys and Secrets (CRITICAL!)
+*secret*
+*key*
+*token*
+*password*
+*credentials*
+!requirements.txt
+!package.json
+!package-lock.json
+!*_example.*
+
+# ML Models (can be large)
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Node modules (frontend)
+node_modules/
+.npm/
+.pnp
+.pnp.js
+
+# Build outputs
+/build
+/dist
+*.bundle.js
+*.bundle.js.map
+
+# Misc
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+

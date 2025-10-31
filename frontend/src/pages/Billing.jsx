@@ -4,6 +4,7 @@ import api from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Navigation from '../components/ui/Navigation';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 const Billing = () => {
   const { user } = useAuth();
@@ -57,26 +58,29 @@ const Billing = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-green-900/20 to-gray-900">
       <Navigation />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 sm:mb-8 fade-in">
           <div>
-            <h1 className="text-3xl font-bold text-white">Billing & Subscription</h1>
-            <p className="text-gray-400 mt-1">Manage your subscription and usage</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Billing & Subscription</h1>
+            <p className="text-sm sm:text-base text-gray-400 mt-1">Manage your subscription and usage</p>
           </div>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <div className="glass-card p-8 rounded-2xl flex flex-col items-center gap-4">
+              <LoadingSpinner size="lg" />
+              <p className="text-white font-medium">Loading billing information...</p>
+            </div>
           </div>
         ) : (
           <>
             {/* Current Plan */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
               <Card className="lg:col-span-2">
                 <h2 className="text-xl font-semibold text-white mb-4">Current Plan</h2>
                 

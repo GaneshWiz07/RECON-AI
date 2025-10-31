@@ -4,6 +4,7 @@ import api from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Navigation from '../components/ui/Navigation';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 const Assets = () => {
   const { user } = useAuth();
@@ -22,10 +23,10 @@ const Assets = () => {
     fetchAssets();
     fetchUserPlan();
     
-    // Auto-refresh every 5 seconds to show new assets from scans
+    // Auto-refresh every 15 seconds to show new assets from scans
     const interval = setInterval(() => {
       fetchAssets();
-    }, 5000);
+    }, 15000);
     
     return () => clearInterval(interval);
   }, [currentPage, searchTerm]);
@@ -77,7 +78,7 @@ const Assets = () => {
         message: `Scanning "${scanDomain}"... This may take a few seconds.`
       });
       
-      // Wait for scan to complete (check every 2 seconds for up to 40 seconds)
+      // Wait for scan to complete (check every 15 seconds for up to 5 minutes)
       let attempts = 0;
       const maxAttempts = 20;
       let scanCompleted = false;
@@ -85,7 +86,7 @@ const Assets = () => {
       const initialAssetCount = assets.length;
       
       while (attempts < maxAttempts && !scanCompleted) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 15000));
         
         // Fetch updated assets
         const assetsResponse = await api.get(`/api/assets/?page=1&limit=100`);
@@ -120,8 +121,8 @@ const Assets = () => {
           break;
         }
         
-        // After 8 attempts (16 seconds), check if scan finished with 0 assets
-        if (attempts >= 8) {
+        // After 4 attempts (60 seconds), check if scan finished with 0 assets
+        if (attempts >= 4) {
           // Refresh assets one more time
           await fetchAssets();
           const finalCheck = assets.filter(asset => {
@@ -174,23 +175,6 @@ const Assets = () => {
     }
   };
 
-  const handleExport = async () => {
-    try {
-      const response = await api.get('/api/assets/export', {
-        responseType: 'blob'
-      });
-      
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'assets.csv');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (error) {
-      console.error('Export failed:', error);
-    }
-  };
 
   const filteredAssets = assets.filter(asset => 
     asset.asset_value.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -245,27 +229,22 @@ const Assets = () => {
   const assetsWithBreaches = filteredAssets.filter(asset => getAssetBreaches(asset) !== null);
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-indigo-900/20 to-gray-900">
       <Navigation />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 sm:mb-8 fade-in">
           <div>
-            <h1 className="text-3xl font-bold text-white">Asset Discovery</h1>
-            <p className="text-gray-400 mt-1">Discover and manage your internet assets</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Asset Discovery</h1>
+            <p className="text-sm sm:text-base text-gray-400 mt-1">Discover and manage your internet assets</p>
           </div>
           
-          <div className="mt-4 md:mt-0 flex gap-3">
-            <Button onClick={handleExport} disabled={loading || assets.length === 0}>
-              Export CSV
-            </Button>
-          </div>
         </div>
 
         {/* Notification */}
         {scanNotification && (
-          <div className={`mb-6 p-4 rounded-lg border ${
+          <div className={`mb-6 p-4 rounded-lg glass-card border scale-in ${
             scanNotification.type === 'success' ? 'bg-green-900/20 border-green-500 text-green-200' :
             scanNotification.type === 'warning' ? 'bg-yellow-900/20 border-yellow-500 text-yellow-200' :
             scanNotification.type === 'error' ? 'bg-red-900/20 border-red-500 text-red-200' :
@@ -796,6 +775,183 @@ const Assets = () => {
                    <span>Use unique passwords per service</span>
                  </li>
                </ul>
+             </div>
+           </Card>
+         )}
+
+         {/* Summary Report Section */}
+         {assets.length > 0 && (
+           <Card className="mt-8">
+             <div className="mb-6">
+               <h2 className="text-2xl font-bold text-white">📊 Security Summary Report</h2>
+               <p className="text-sm text-gray-400 mt-1">
+                 Comprehensive overview of your assets, vulnerabilities, and security status
+               </p>
+             </div>
+
+             {/* SME-Friendly Terms Section */}
+             <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/50 rounded-lg p-6 mb-6">
+               <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                 <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                   <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                 </svg>
+                 Easy Terms for Business Owners
+               </h3>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                 {[
+                   ['Phishing', 'Fake Message'],
+                   ['Smishing', 'Fake SMS'],
+                   ['Vishing', 'Fake Call'],
+                   ['Whaling', 'Boss Scam'],
+                   ['Baiting', 'Free Trap'],
+                   ['Malware', 'Harmful File'],
+                   ['Ransomware', 'Lock Attack'],
+                   ['Data Leak', 'Info Spill'],
+                   ['Weak Passwords', 'Easy Login'],
+                 ].map(([tech, simple], idx) => (
+                   <div key={idx} className="bg-gray-800/50 rounded-lg p-3">
+                     <div className="text-sm font-semibold text-blue-300">{tech}</div>
+                     <div className="text-xs text-gray-400 mt-1">→ {simple}</div>
+                   </div>
+                 ))}
+               </div>
+             </div>
+
+             {/* Overall Statistics */}
+             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+               <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                 <div className="text-sm text-gray-400 mb-1">Total Assets</div>
+                 <div className="text-3xl font-bold text-white">{assets.length}</div>
+               </div>
+               <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                 <div className="text-sm text-gray-400 mb-1">High Risk</div>
+                 <div className="text-3xl font-bold text-red-500">
+                   {assets.filter(a => a.risk_level === 'high' || a.risk_level === 'critical').length}
+                 </div>
+               </div>
+               <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                 <div className="text-sm text-gray-400 mb-1">Medium Risk</div>
+                 <div className="text-3xl font-bold text-yellow-500">
+                   {assets.filter(a => a.risk_level === 'medium').length}
+                 </div>
+               </div>
+               <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                 <div className="text-sm text-gray-400 mb-1">Low Risk</div>
+                 <div className="text-3xl font-bold text-green-500">
+                   {assets.filter(a => a.risk_level === 'low').length}
+                 </div>
+               </div>
+             </div>
+
+             {/* Security Misconfigurations Summary */}
+             <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+               <h3 className="text-lg font-semibold text-white mb-4">🔒 Security Issues Found</h3>
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                 <div className="bg-gray-900 rounded-lg p-4">
+                   <div className="text-sm text-gray-400 mb-2">Missing Security Headers</div>
+                   <div className="text-2xl font-bold text-orange-400">
+                     {assets.reduce((sum, a) => sum + (((a.misconfigurations || {}).web_headers || {}).missing_headers || []).length, 0)}
+                   </div>
+                   <div className="text-xs text-gray-500 mt-1">Headers protect against attacks</div>
+                 </div>
+                 <div className="bg-gray-900 rounded-lg p-4">
+                   <div className="text-sm text-gray-400 mb-2">SSL/TLS Issues</div>
+                   <div className="text-2xl font-bold text-red-400">
+                     {assets.reduce((sum, a) => sum + (((a.misconfigurations || {}).ssl || {}).issues || []).length, 0)}
+                   </div>
+                   <div className="text-xs text-gray-500 mt-1">Certificate problems</div>
+                 </div>
+                 <div className="bg-gray-900 rounded-lg p-4">
+                   <div className="text-sm text-gray-400 mb-2">DNS Problems</div>
+                   <div className="text-2xl font-bold text-yellow-400">
+                     {assets.reduce((sum, a) => sum + (((a.misconfigurations || {}).dns || {}).issues || []).length, 0)}
+                   </div>
+                   <div className="text-xs text-gray-500 mt-1">DNS configuration errors</div>
+                 </div>
+                 <div className="bg-gray-900 rounded-lg p-4">
+                   <div className="text-sm text-gray-400 mb-2">Exposed Cloud Storage</div>
+                   <div className="text-2xl font-bold text-red-400">
+                     {assets.reduce((sum, a) => sum + (((a.misconfigurations || {}).cloud_buckets || {}).buckets || []).length, 0)}
+                   </div>
+                   <div className="text-xs text-gray-500 mt-1">Public cloud buckets</div>
+                 </div>
+                 <div className="bg-gray-900 rounded-lg p-4">
+                   <div className="text-sm text-gray-400 mb-2">Sensitive Files Exposed</div>
+                   <div className="text-2xl font-bold text-red-400">
+                     {assets.reduce((sum, a) => sum + (((a.misconfigurations || {}).security_files || {}).sensitive_exposed || []).length, 0)}
+                   </div>
+                   <div className="text-xs text-gray-500 mt-1">Config files visible</div>
+                 </div>
+                 <div className="bg-gray-900 rounded-lg p-4">
+                   <div className="text-sm text-gray-400 mb-2">Open Directories</div>
+                   <div className="text-2xl font-bold text-orange-400">
+                     {assets.reduce((sum, a) => sum + (((a.misconfigurations || {}).open_directories || {}).open_directories || []).length, 0)}
+                   </div>
+                   <div className="text-xs text-gray-500 mt-1">Directory listings enabled</div>
+                 </div>
+               </div>
+             </div>
+
+             {/* Data Breaches Summary */}
+             <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-6">
+               <h3 className="text-lg font-semibold text-white mb-4">🚨 Data Breach Summary</h3>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                 <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
+                   <div className="text-sm text-red-300 mb-2">Total Breaches</div>
+                   <div className="text-3xl font-bold text-red-400">
+                     {assets.reduce((sum, a) => sum + (a.breach_history_count || 0), 0)}
+                   </div>
+                 </div>
+                 <div className="bg-orange-900/20 border border-orange-500 rounded-lg p-4">
+                   <div className="text-sm text-orange-300 mb-2">Assets with Breaches</div>
+                   <div className="text-3xl font-bold text-orange-400">
+                     {assets.filter(a => (a.breach_history_count || 0) > 0).length}
+                   </div>
+                 </div>
+                 <div className="bg-yellow-900/20 border border-yellow-500 rounded-lg p-4">
+                   <div className="text-sm text-yellow-300 mb-2">Breach Risk Level</div>
+                   <div className="text-2xl font-bold text-yellow-400">
+                     {assets.reduce((sum, a) => sum + (a.breach_history_count || 0), 0) > 10 ? 'HIGH' : 
+                      assets.reduce((sum, a) => sum + (a.breach_history_count || 0), 0) > 3 ? 'MEDIUM' : 'LOW'}
+                   </div>
+                 </div>
+               </div>
+             </div>
+
+             {/* Action Items */}
+             <div className="bg-blue-900/20 border border-blue-500 rounded-lg p-6">
+               <h3 className="text-lg font-semibold text-blue-200 mb-4 flex items-center gap-2">
+                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                 </svg>
+                 What You Should Do Next
+               </h3>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                 <div className="flex items-start gap-2">
+                   <span className="text-blue-400 mt-0.5">1.</span>
+                   <span className="text-blue-300">Fix critical security headers immediately</span>
+                 </div>
+                 <div className="flex items-start gap-2">
+                   <span className="text-blue-400 mt-0.5">2.</span>
+                   <span className="text-blue-300">Renew or update SSL certificates</span>
+                 </div>
+                 <div className="flex items-start gap-2">
+                   <span className="text-blue-400 mt-0.5">3.</span>
+                   <span className="text-blue-300">Remove exposed sensitive files</span>
+                 </div>
+                 <div className="flex items-start gap-2">
+                   <span className="text-blue-400 mt-0.5">4.</span>
+                   <span className="text-blue-300">Configure cloud bucket permissions</span>
+                 </div>
+                 <div className="flex items-start gap-2">
+                   <span className="text-blue-400 mt-0.5">5.</span>
+                   <span className="text-blue-300">Disable directory listings</span>
+                 </div>
+                 <div className="flex items-start gap-2">
+                   <span className="text-blue-400 mt-0.5">6.</span>
+                   <span className="text-blue-300">Rotate credentials if breaches found</span>
+                 </div>
+               </div>
              </div>
            </Card>
          )}

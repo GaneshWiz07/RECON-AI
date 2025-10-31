@@ -15,6 +15,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import Navigation from '../components/ui/Navigation';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 import {
   LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -114,12 +115,12 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900/20 to-gray-900">
         <Navigation />
         <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 4rem)' }}>
-          <div className="flex flex-col items-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
-            <p className="text-gray-400 mt-4">Loading...</p>
+          <div className="glass-card p-8 rounded-2xl flex flex-col items-center gap-4">
+            <LoadingSpinner size="lg" />
+            <p className="text-white font-medium">Loading dashboard...</p>
           </div>
         </div>
       </div>
@@ -127,18 +128,18 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900/20 to-gray-900">
       <Navigation />
       
-      <div className="max-w-7xl mx-auto p-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-400 mt-1">Welcome back, {user?.email}</p>
+        <div className="mb-6 sm:mb-8 fade-in">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Dashboard</h1>
+          <p className="text-sm sm:text-base text-gray-400 mt-1">Welcome back, {user?.email}</p>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-6 mb-6 sm:mb-8">
           <Card>
             <div className="flex flex-col">
               <span className="text-gray-400 text-sm mb-2">Overall Risk Score</span>

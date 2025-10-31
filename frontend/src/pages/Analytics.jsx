@@ -17,6 +17,7 @@ const Analytics = () => {
   const [securityInsights, setSecurityInsights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('30');
+  const [showHeaderModal, setShowHeaderModal] = useState(false);
 
   useEffect(() => {
     fetchAnalyticsData();
@@ -58,38 +59,44 @@ const Analytics = () => {
   const ASSET_COLORS = ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'];
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900">
       <Navigation />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 sm:mb-8 fade-in">
           <div>
-            <h1 className="text-3xl font-bold text-white">Risk Analytics</h1>
-            <p className="text-gray-400 mt-1">Security insights and risk trends</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Risk Analytics</h1>
+            <p className="text-sm sm:text-base text-gray-400 mt-1">Security insights and risk trends</p>
           </div>
           
           <div className="mt-4 md:mt-0">
             <select
               value={timeRange}
               onChange={(e) => setTimeRange(e.target.value)}
-              className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full md:w-auto px-3 py-2 glass-card rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             >
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
+              <option value="7" className="bg-gray-800">Last 7 days</option>
+              <option value="30" className="bg-gray-800">Last 30 days</option>
+              <option value="90" className="bg-gray-800">Last 90 days</option>
             </select>
           </div>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <div className="glass-card p-8 rounded-2xl flex flex-col items-center gap-4">
+              <div className="relative w-12 h-12">
+                <div className="absolute inset-0 rounded-full border-4 border-blue-500/20"></div>
+                <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 animate-spin"></div>
+              </div>
+              <p className="text-white font-medium">Loading analytics...</p>
+            </div>
           </div>
         ) : (
           <>
             {/* Risk Trend Chart */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
               <Card title="Risk Score Trend">
                 {riskTrend.length > 0 ? (
                   <ResponsiveContainer width="100%" height={300}>
@@ -284,7 +291,14 @@ const Analytics = () => {
                               )}
                             </div>
                             {insight.action && (
-                              <button className="ml-3 px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors">
+                              <button 
+                                onClick={() => {
+                                  if (insight.action === 'View Header Recommendations') {
+                                    setShowHeaderModal(true);
+                                  }
+                                }}
+                                className="ml-3 px-3 py-1 text-xs glass-button text-white rounded-md transition-colors"
+                              >
                                 {insight.action}
                               </button>
                             )}
@@ -313,6 +327,159 @@ const Analytics = () => {
           </>
         )}
       </div>
+
+      {/* Security Headers Recommendations Modal */}
+      {showHeaderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/80 backdrop-blur-md p-4" onClick={() => setShowHeaderModal(false)}>
+          <div className="glass-card rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto scale-in" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="sticky top-0 glass-navbar px-6 py-4 border-b border-white/10 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-white">Security Headers Recommendations</h2>
+              <button 
+                onClick={() => setShowHeaderModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-6">
+              {/* Content Security Policy (CSP) */}
+              <div className="glass-card p-6 rounded-lg">
+                <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  Content-Security-Policy (CSP)
+                </h3>
+                <p className="text-gray-300 text-sm mb-4">
+                  Prevents XSS attacks and unauthorized code execution by controlling which resources can be loaded.
+                </p>
+                <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                  <p className="text-xs text-gray-400 mb-2">Example Implementation:</p>
+                  <code className="text-xs text-green-400 font-mono block overflow-x-auto">
+                    Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';
+                  </code>
+                </div>
+              </div>
+
+              {/* HSTS */}
+              <div className="glass-card p-6 rounded-lg">
+                <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  Strict-Transport-Security (HSTS)
+                </h3>
+                <p className="text-gray-300 text-sm mb-4">
+                  Forces browsers to use HTTPS, preventing man-in-the-middle attacks.
+                </p>
+                <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                  <p className="text-xs text-gray-400 mb-2">Example Implementation:</p>
+                  <code className="text-xs text-green-400 font-mono block">
+                    Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+                  </code>
+                </div>
+              </div>
+
+              {/* X-Frame-Options */}
+              <div className="glass-card p-6 rounded-lg">
+                <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                  X-Frame-Options
+                </h3>
+                <p className="text-gray-300 text-sm mb-4">
+                  Prevents clickjacking attacks by controlling if your site can be embedded in frames.
+                </p>
+                <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                  <p className="text-xs text-gray-400 mb-2">Example Implementation:</p>
+                  <code className="text-xs text-green-400 font-mono block">
+                    X-Frame-Options: DENY
+                  </code>
+                </div>
+              </div>
+
+              {/* X-Content-Type-Options */}
+              <div className="glass-card p-6 rounded-lg">
+                <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                  X-Content-Type-Options
+                </h3>
+                <p className="text-gray-300 text-sm mb-4">
+                  Prevents MIME type sniffing attacks.
+                </p>
+                <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                  <p className="text-xs text-gray-400 mb-2">Example Implementation:</p>
+                  <code className="text-xs text-green-400 font-mono block">
+                    X-Content-Type-Options: nosniff
+                  </code>
+                </div>
+              </div>
+
+              {/* X-XSS-Protection */}
+              <div className="glass-card p-6 rounded-lg">
+                <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                  X-XSS-Protection
+                </h3>
+                <p className="text-gray-300 text-sm mb-4">
+                  Enables browser's built-in XSS protection (legacy but still useful).
+                </p>
+                <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                  <p className="text-xs text-gray-400 mb-2">Example Implementation:</p>
+                  <code className="text-xs text-green-400 font-mono block">
+                    X-XSS-Protection: 1; mode=block
+                  </code>
+                </div>
+              </div>
+
+              {/* Referrer-Policy */}
+              <div className="glass-card p-6 rounded-lg">
+                <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                  Referrer-Policy
+                </h3>
+                <p className="text-gray-300 text-sm mb-4">
+                  Controls how much referrer information is sent with requests.
+                </p>
+                <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                  <p className="text-xs text-gray-400 mb-2">Example Implementation:</p>
+                  <code className="text-xs text-green-400 font-mono block">
+                    Referrer-Policy: strict-origin-when-cross-origin
+                  </code>
+                </div>
+              </div>
+
+              {/* Implementation Guide */}
+              <div className="bg-blue-900/20 border border-blue-500 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-blue-200 mb-4 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  How to Implement
+                </h3>
+                <div className="space-y-3 text-sm text-blue-300">
+                  <p><strong className="text-blue-200">For Apache:</strong> Add headers to your .htaccess or httpd.conf file</p>
+                  <p><strong className="text-blue-200">For Nginx:</strong> Add headers to your server block in nginx.conf</p>
+                  <p><strong className="text-blue-200">For Node.js:</strong> Use helmet middleware package</p>
+                  <p><strong className="text-blue-200">For Express:</strong> Use app.use(helmet())</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="sticky bottom-0 glass-navbar px-6 py-4 border-t border-white/10 flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setShowHeaderModal(false)}>
+                Close
+              </Button>
+              <Button variant="primary" onClick={() => {
+                window.open('https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers', '_blank');
+              }}>
+                Learn More
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

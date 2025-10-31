@@ -17,13 +17,13 @@ const Card = ({
   return (
     <div
       className={clsx(
-        'bg-gray-800 border border-gray-700 rounded-lg shadow-lg',
+        'glass-card glass-hover rounded-xl fade-in',
         className
       )}
       {...props}
     >
       {(title || action) && (
-        <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 border-b border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             {title && (
               <h3 className="text-lg font-semibold text-white">{title}</h3>
@@ -36,7 +36,7 @@ const Card = ({
         </div>
       )}
 
-      <div className={clsx(padding && 'p-6')}>
+      <div className={clsx(padding && 'p-4 sm:p-6')}>
         {children}
       </div>
     </div>
