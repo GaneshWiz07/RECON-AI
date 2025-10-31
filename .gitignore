@@ -67,13 +67,21 @@ logs/
 # API Keys and Secrets (CRITICAL!)
 *secret*
 *key*
+*.env
+.env
+.env.*
+!.env.example
 *token*
-*password*
 *credentials*
 !requirements.txt
 !package.json
 !package-lock.json
 !*_example.*
+# Allow password-related component files
+!*Password*.jsx
+!*Password*.tsx
+!*password*.jsx
+!*password*.tsx
 
 # ML Models (can be large)
 *.pkl
