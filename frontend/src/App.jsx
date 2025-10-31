@@ -3,15 +3,20 @@
  * Sets up routing and authentication context
  */
 
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import ProtectedRoute from './components/auth/ProtectedRoute';
-import Login from './pages/Login';
-import ForgotPassword from './pages/ForgotPassword';
-import Dashboard from './pages/Dashboard';
-import Assets from './pages/Assets';
-import Analytics from './pages/Analytics';
-import Billing from './pages/Billing';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
+import Login from "./pages/Login.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
+import Assets from "./pages/Assets.jsx";
+import Analytics from "./pages/Analytics.jsx";
+import Billing from "./pages/Billing.jsx";
 
 function App() {
   return (
