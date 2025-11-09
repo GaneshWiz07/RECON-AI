@@ -92,6 +92,8 @@ An intelligent Open Source Intelligence (OSINT) platform that combines automated
 - MongoDB Atlas account (free tier available)
 - Firebase account (for authentication)
 - Stripe account (optional, for billing)
+- **nmap** (recommended, for advanced port scanning)
+- **masscan** (optional, for fast large-scale scanning)
 
 ### 1. Clone the Repository
 
@@ -118,6 +120,27 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+### 2a. Install Port Scanning Tools (Recommended)
+
+**Windows:**
+```powershell
+# Install nmap using Chocolatey
+choco install nmap
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get update
+sudo apt-get install -y nmap masscan
+```
+
+**macOS:**
+```bash
+brew install nmap masscan
+```
+
+**Note:** If nmap/masscan are not installed, the system will automatically fall back to Python socket scanning (slower but functional).
 
 ### 3. Configure Backend Environment
 
