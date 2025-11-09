@@ -5,10 +5,9 @@ Additional data enrichment for discovered assets
 """
 
 import logging
-from typing import Dict, List
+from typing import Dict
 import dns.resolver
 import httpx
-from app.collectors.port_scanner import PortScanner
 
 logger = logging.getLogger(__name__)
 
@@ -127,145 +126,39 @@ async def check_security_headers(domain: str) -> Dict:
 
 async def check_breach_history(domain: str) -> int:
     """
-    Check breach history using multiple free sources.
-    
-    Uses a fallback approach:
-    1. Try HaveIBeenPwned public API (no auth, limited data)
-    2. Fallback to local breach estimation based on domain age/popularity
-    
-    Note: For production use with full breach data, consider:
-    - HaveIBeenPwned API key ($3.50/month): https://haveibeenpwned.com/API/Key
-    - DeHashed API: https://dehashed.com/
-    - LeakCheck API: https://leakcheck.io/
+    Check breach history using HaveIBeenPwned API.
 
     Args:
         domain: Domain to check
 
     Returns:
-        Number of breaches found (estimated if API unavailable)
+        Number of breaches found
     """
     try:
-        # Try HaveIBeenPwned public breach list (no auth required)
-        # This endpoint returns all breaches, we filter by domain
-        url = "https://haveibeenpwned.com/api/v3/breaches"
+        url = f"https://haveibeenpwned.com/api/v3/breaches"
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                }
+                params={"domain": domain},
+                headers={"User-Agent": "ReconAI-Scanner"}
             )
 
-            if response.status_code == 200:
-                all_breaches = response.json()
-                
-                # Filter breaches that mention this domain
-                domain_breaches = []
-                domain_lower = domain.lower()
-                
-                for breach in all_breaches:
-                    breach_domain = breach.get("Domain", "").lower()
-                    breach_name = breach.get("Name", "").lower()
-                    
-                    # Check if domain matches or is mentioned in breach name
-                    if (breach_domain == domain_lower or 
-                        domain_lower in breach_name or
-                        breach_name in domain_lower):
-                        domain_breaches.append(breach)
-                
-                breach_count = len(domain_breaches)
-                
-                if breach_count > 0:
-                    logger.info(f"Found {breach_count} breaches for {domain} via HaveIBeenPwned")
-                    # Log breach details for verification
-                    for breach in domain_breaches[:3]:  # Log first 3
-                        logger.info(f"  - {breach.get('Name')}: {breach.get('PwnCount', 0):,} accounts")
-                else:
-                    logger.info(f"No breaches found for {domain}")
-                
-                return breach_count
-            else:
-                logger.warning(f"HaveIBeenPwned API returned status {response.status_code}")
-                # Fallback to estimation
-                return _estimate_breach_risk(domain)
+            if response.status_code == 404:
+                # No breaches found
+                return 0
 
-    except httpx.TimeoutException:
-        logger.warning(f"Breach check timeout for {domain}")
-        return _estimate_breach_risk(domain)
+            if response.status_code == 200:
+                breaches = response.json()
+                breach_count = len(breaches)
+                logger.info(f"Found {breach_count} breaches for {domain}")
+                return breach_count
+
+            return 0
+
     except Exception as e:
         logger.warning(f"Breach history check failed for {domain}: {str(e)}")
-        return _estimate_breach_risk(domain)
-
-
-def _estimate_breach_risk(domain: str) -> int:
-    """
-    Estimate breach risk based on domain characteristics.
-    This is a fallback when APIs are unavailable.
-    
-    Returns conservative estimate (0 for most domains).
-    """
-    # Known high-profile breached domains (public knowledge)
-    known_breached = {
-        'adobe.com': 5,
-        'linkedin.com': 3,
-        'yahoo.com': 4,
-        'myspace.com': 2,
-        'tumblr.com': 2,
-        'dropbox.com': 2,
-        'lastfm.com': 1,
-        'canva.com': 1,
-        'twitter.com': 1,
-        'facebook.com': 1,
-    }
-    
-    domain_lower = domain.lower()
-    
-    # Check if it's a known breached domain
-    if domain_lower in known_breached:
-        count = known_breached[domain_lower]
-        logger.info(f"Using known breach count for {domain}: {count} (API unavailable)")
-        return count
-    
-    # For unknown domains, return 0 (conservative approach)
-    logger.info(f"No breach data available for {domain} (API unavailable, returning 0)")
-    return 0
-
-
-async def scan_ports(target: str, scan_type: str = "common") -> Dict:
-    """
-    Scan ports on target using nmap/masscan or Python fallback.
-    
-    Args:
-        target: IP address or hostname to scan
-        scan_type: "common" (18 ports), "top100" (100 ports), or "full" (1-1000)
-    
-    Returns:
-        Dictionary with open ports and services
-    """
-    try:
-        result = await PortScanner.scan_ports(
-            target=target,
-            scan_type=scan_type,
-            timeout=120  # 2 minutes timeout
-        )
-        
-        if result.get('error'):
-            logger.warning(f"Port scan had errors for {target}: {result['error']}")
-        else:
-            logger.info(f"Port scan completed for {target}: {len(result['open_ports'])} ports open (method: {result['scan_method']})")
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Port scanning failed for {target}: {str(e)}")
-        return {
-            'target': target,
-            'open_ports': [],
-            'services': {},
-            'scan_method': 'failed',
-            'error': str(e)
-        }
+        return 0
 
 
 def detect_outdated_software(technologies: list) -> int:

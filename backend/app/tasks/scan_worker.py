@@ -13,8 +13,7 @@ from app.collectors.enrichers import (
     enrich_dns,
     check_security_headers,
     check_breach_history,
-    detect_outdated_software,
-    scan_ports
+    detect_outdated_software
 )
 from app.ml.predict import predict_risk_score, get_risk_level
 from app.detectors import (
@@ -231,30 +230,14 @@ async def _execute_scan_async(scan_id: str, domain: str, user_id: str):
                 dns_records = await enrich_dns(asset_data.get("asset_value", domain))
                 asset_data["dns_records"] = dns_records
 
-                # Perform port scanning (use IP if available, otherwise domain)
-                scan_target = asset_data.get("ip_address") or asset_data.get("asset_value", domain)
-                port_scan_result = await scan_ports(scan_target, scan_type="common")
-                
-                # Update open ports with scan results
-                if port_scan_result.get("open_ports"):
-                    asset_data["open_ports"] = port_scan_result["open_ports"]
-                    asset_data["port_scan_method"] = port_scan_result["scan_method"]
-                    
-                    # Add service information if available
-                    if port_scan_result.get("services"):
-                        asset_data["port_services"] = port_scan_result["services"]
-                
-                logger.info(f"Port scan for {scan_target}: {len(asset_data.get('open_ports', []))} ports open")
-
                 # Check security headers
                 headers_data = await check_security_headers(domain)
                 asset_data["http_security_headers_score"] = headers_data["score"]
                 asset_data["missing_security_headers"] = headers_data["missing"]
 
-                # Check breach history (using BreachDirectory API)
+                # Check breach history
                 breach_count = await check_breach_history(domain)
                 asset_data["breach_history_count"] = breach_count
-                logger.info(f"Breach check for {domain}: {breach_count} breaches found")
 
                 # Detect outdated software
                 outdated_count = detect_outdated_software(asset_data.get("technologies", []))
