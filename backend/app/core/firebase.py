@@ -104,7 +104,7 @@ async def verify_firebase_token(token: str) -> Dict:
 
     try:
         # Verify the ID token
-        decoded_token = auth.verify_id_token(token)
+        decoded_token = auth.verify_id_token(token, clock_skew_seconds=60)
 
         # Extract user information
         user_info = {
@@ -118,11 +118,11 @@ async def verify_firebase_token(token: str) -> Dict:
         logger.debug(f"Token verified successfully for user: {user_info['uid']}")
         return user_info
 
-    except auth.InvalidIdTokenError:
-        logger.warning("Invalid Firebase ID token")
+    except auth.InvalidIdTokenError as e:
+        logger.warning(f"Invalid Firebase ID token: {str(e)}")
         raise HTTPException(
             status_code=401,
-            detail="Invalid authentication token"
+            detail=f"Invalid authentication token: {str(e)}"
         )
     except Exception as e:
         logger.error(f"Token verification failed: {str(e)}")
