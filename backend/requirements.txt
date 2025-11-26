@@ -42,6 +42,9 @@ passlib[bcrypt]==1.7.4
 # Utilities
 python-dotenv==1.0.0
 
+# LLM Integration
+groq==0.4.1
+
 # Development and testing
 pytest==7.4.3
 pytest-asyncio==0.21.1

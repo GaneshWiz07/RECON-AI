@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from app.core.firebase import initialize_firebase
 from app.core.database import connect_to_mongodb, close_mongodb_connection, check_database_health
 from app.middleware.auth import FirebaseAuthMiddleware
+from app.services.groq_service import initialize_groq
 from app.api.routes import auth, assets, analytics, billing
 
 # Load environment variables
@@ -45,6 +46,10 @@ async def lifespan(app: FastAPI):
         # Initialize Firebase Admin SDK
         initialize_firebase()
         logger.info("✓ Firebase initialized")
+
+        # Initialize Groq LLM service
+        initialize_groq()
+        logger.info("✓ Groq service initialized")
 
         # Connect to MongoDB
         await connect_to_mongodb()

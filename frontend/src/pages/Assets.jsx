@@ -175,6 +175,38 @@ const Assets = () => {
     }
   };
 
+  const handleClearAssets = async () => {
+    if (!window.confirm('Are you sure you want to clear all scanned records? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await api.delete('/api/assets/');
+      const deletedCount = response.data?.deleted_count || 0;
+      
+      setScanNotification({
+        type: 'success',
+        message: `Successfully cleared ${deletedCount} scanned record(s).`
+      });
+
+      // Refresh assets list
+      await fetchAssets();
+      setCurrentPage(1);
+      setSearchTerm('');
+
+      // Auto-hide notification after 5 seconds
+      setTimeout(() => setScanNotification(null), 5000);
+    } catch (error) {
+      console.error('Failed to clear assets:', error);
+      setScanNotification({
+        type: 'error',
+        message: `Failed to clear assets: ${error.message || 'Unknown error'}`
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredAssets = assets.filter(asset =>
     asset.asset_value.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -386,7 +418,19 @@ const Assets = () => {
 
         {/* Assets Table */}
         <Card>
-          <h2 className="text-xl font-semibold text-white mb-4">Discovered Assets</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-white">Discovered Assets</h2>
+            {assets.length > 0 && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleClearAssets}
+                disabled={loading}
+              >
+                Clear All Records
+              </Button>
+            )}
+          </div>
 
           {loading ? (
             <div className="flex items-center justify-center py-12">

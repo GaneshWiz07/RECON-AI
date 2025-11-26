@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Request, Query
 from app.core.database import get_collection
 from app.middleware.auth import get_current_user
+from app.services.groq_service import generate_batch_recommendations
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +62,59 @@ async def get_dashboard_stats(request: Request):
         else:
             overall_risk_level = "low"
 
-        # Calculate 7-day changes (placeholder - would need historical data)
-        risk_score_change_7d = 0.0
-        assets_change_7d = 0.0
-        scans_change_7d = 0.0
+        # Calculate 7-day changes using historical data
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        fourteen_days_ago = datetime.utcnow() - timedelta(days=14)
+        
+        # Calculate risk score change (compare current avg vs 7 days ago)
+        current_avg_pipeline = [
+            {"$match": {"user_id": uid}},
+            {"$group": {"_id": None, "avg_risk": {"$avg": "$risk_score"}}}
+        ]
+        current_avg_result = await assets_collection.aggregate(current_avg_pipeline).to_list(length=1)
+        current_avg_risk = current_avg_result[0]["avg_risk"] if current_avg_result and current_avg_result[0].get("avg_risk") else 0
+        
+        # Get assets discovered 7-14 days ago for comparison
+        old_assets_pipeline = [
+            {
+                "$match": {
+                    "user_id": uid,
+                    "discovered_at": {"$gte": fourteen_days_ago, "$lt": seven_days_ago}
+                }
+            },
+            {"$group": {"_id": None, "avg_risk": {"$avg": "$risk_score"}}}
+        ]
+        old_avg_result = await assets_collection.aggregate(old_assets_pipeline).to_list(length=1)
+        old_avg_risk = old_avg_result[0]["avg_risk"] if old_avg_result and old_avg_result[0].get("avg_risk") else current_avg_risk
+        
+        # Calculate change percentage
+        if old_avg_risk > 0:
+            risk_score_change_7d = round(((current_avg_risk - old_avg_risk) / old_avg_risk) * 100, 1)
+        else:
+            risk_score_change_7d = 0.0
+        
+        # Calculate assets change (new assets in last 7 days)
+        assets_7d_ago = await assets_collection.count_documents({
+            "user_id": uid,
+            "discovered_at": {"$lt": seven_days_ago}
+        })
+        assets_change_7d = round(((total_assets - assets_7d_ago) / max(assets_7d_ago, 1)) * 100, 1) if assets_7d_ago > 0 else (total_assets * 100.0)
+        
+        # Calculate scans change (scans in last 7 days vs previous 7 days)
+        scans_7d_ago = await scans_collection.count_documents({
+            "user_id": uid,
+            "created_at": {"$lt": seven_days_ago}
+        })
+        scans_previous_7d = await scans_collection.count_documents({
+            "user_id": uid,
+            "created_at": {"$gte": fourteen_days_ago, "$lt": seven_days_ago}
+        })
+        if scans_previous_7d > 0:
+            scans_change_7d = round(((total_scans - scans_7d_ago - scans_previous_7d) / scans_previous_7d) * 100, 1)
+        else:
+            scans_change_7d = (total_scans - scans_7d_ago) * 100.0 if (total_scans - scans_7d_ago) > 0 else 0.0
 
         # Count new critical alerts (last 7 days)
-        seven_days_ago = datetime.utcnow() - timedelta(days=7)
         new_critical_alerts = await assets_collection.count_documents({
             "user_id": uid,
             "risk_level": "critical",
@@ -155,48 +202,58 @@ async def get_risk_trend(
         ]
 
         scan_results = await scans_collection.aggregate(scan_pipeline).to_list(length=days)
-
-        # For each scan date, calculate average risk score from assets
-        trend = []
         
         # Get all assets for this user
         all_assets = await assets_collection.find({"user_id": uid}).to_list(length=None)
         
+        trend = []
+        
         if scan_results and all_assets:
             # We have completed scans - calculate average risk for each scan date
+            # For each scan date, use assets that existed at that time (discovered_at <= scan_date)
             for scan_item in scan_results:
                 date_str = scan_item["_id"]
+                scan_date = scan_item.get("scan_date")
                 
-                # Use all current assets for simplicity (showing current state across dates)
-                avg_risk = sum(asset.get("risk_score", 0) for asset in all_assets) / len(all_assets)
+                if scan_date:
+                    # Filter assets that existed before or on this scan date
+                    assets_at_time = [
+                        asset for asset in all_assets
+                        if asset.get("discovered_at") and asset.get("discovered_at") <= scan_date
+                    ]
+                    
+                    if assets_at_time:
+                        avg_risk = sum(asset.get("risk_score", 0) for asset in assets_at_time) / len(assets_at_time)
+                        trend.append({
+                            "date": date_str,
+                            "risk_score": round(avg_risk, 1)
+                        })
+                    else:
+                        # No assets at this time, use current average
+                        avg_risk = sum(asset.get("risk_score", 0) for asset in all_assets) / len(all_assets)
+                        trend.append({
+                            "date": date_str,
+                            "risk_score": round(avg_risk, 1)
+                        })
+        elif all_assets:
+            # No scans yet, but we have assets - show current state
+            avg_risk = sum(asset.get("risk_score", 0) for asset in all_assets) / len(all_assets)
+            
+            # Generate points for the requested days showing current average
+            for i in range(min(days, 30)):  # Limit to 30 days max for performance
+                date = datetime.utcnow() - timedelta(days=(min(days, 30) - 1 - i))
+                date_str = date.strftime("%Y-%m-%d")
                 trend.append({
                     "date": date_str,
                     "risk_score": round(avg_risk, 1)
                 })
-        else:
-            # No scans yet, but we might have assets - show current state
-            assets = await assets_collection.find({"user_id": uid}).to_list(length=None)
-            
-            if assets:
-                # Create a trend line for today showing current average
-                avg_risk = sum(asset.get("risk_score", 0) for asset in assets) / len(assets)
-                
-                # Generate points for the last 7 days showing current average
-                for i in range(7):
-                    date = datetime.utcnow() - timedelta(days=(6 - i))
-                    date_str = date.strftime("%Y-%m-%d")
-                    trend.append({
-                        "date": date_str,
-                        "risk_score": round(avg_risk, 1)
-                    })
-
-        # If we have very few data points, expand for better visualization
-        if len(trend) == 1:
-            # Duplicate the single point across the last 7 days
+        
+        # If we have very few data points but have assets, fill in the trend
+        if len(trend) == 1 and all_assets:
             single_point = trend[0]
             trend = []
-            for i in range(7):
-                date = datetime.utcnow() - timedelta(days=(6 - i))
+            for i in range(min(days, 30)):
+                date = datetime.utcnow() - timedelta(days=(min(days, 30) - 1 - i))
                 date_str = date.strftime("%Y-%m-%d")
                 trend.append({
                     "date": date_str,
@@ -301,14 +358,14 @@ async def get_risk_factors(request: Request):
         total_assets = await assets_collection.count_documents({"user_id": uid})
         
         if total_assets == 0:
-            return {"data": {"factors": []}}
+            return {"data": {"factors": [], "total_assets": 0}}
 
         factors = []
 
-        # Count assets with open SSH port (22)
+        # Count assets with open SSH port (22) - MongoDB checks if value is in array
         ssh_count = await assets_collection.count_documents({
             "user_id": uid,
-            "open_ports": 22
+            "open_ports": {"$in": [22]}  # More explicit array check
         })
         if ssh_count > 0:
             factors.append({
@@ -353,16 +410,79 @@ async def get_risk_factors(request: Request):
                 "percentage": round((ssl_count / total_assets) * 100, 1)
             })
 
-        # Count assets with missing security headers
+        # Count assets with missing security headers (check both top-level and nested)
         headers_count = await assets_collection.count_documents({
             "user_id": uid,
-            "http_security_headers_score": {"$lt": 3}
+            "$or": [
+                {"http_security_headers_score": {"$lt": 3}},
+                {"misconfigurations.web_headers.has_issues": True}
+            ]
         })
         if headers_count > 0:
             factors.append({
-                "name": "Missing Headers",
+                "name": "Missing Security Headers",
                 "count": headers_count,
                 "percentage": round((headers_count / total_assets) * 100, 1)
+            })
+
+        # Count assets with SSL/TLS issues (check nested misconfigurations)
+        ssl_issues_count = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.ssl.has_issues": {"$eq": True}
+        })
+        if ssl_issues_count > 0:
+            factors.append({
+                "name": "SSL/TLS Issues",
+                "count": ssl_issues_count,
+                "percentage": round((ssl_issues_count / total_assets) * 100, 1)
+            })
+
+        # Count assets with DNS misconfigurations
+        dns_issues_count = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.dns.has_issues": {"$eq": True}
+        })
+        if dns_issues_count > 0:
+            factors.append({
+                "name": "DNS Misconfigurations",
+                "count": dns_issues_count,
+                "percentage": round((dns_issues_count / total_assets) * 100, 1)
+            })
+
+        # Count assets with exposed cloud buckets
+        cloud_buckets_count = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.cloud_buckets.has_issues": {"$eq": True}
+        })
+        if cloud_buckets_count > 0:
+            factors.append({
+                "name": "Exposed Cloud Storage",
+                "count": cloud_buckets_count,
+                "percentage": round((cloud_buckets_count / total_assets) * 100, 1)
+            })
+
+        # Count assets with exposed sensitive files
+        security_files_count = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.security_files.has_issues": {"$eq": True}
+        })
+        if security_files_count > 0:
+            factors.append({
+                "name": "Exposed Sensitive Files",
+                "count": security_files_count,
+                "percentage": round((security_files_count / total_assets) * 100, 1)
+            })
+
+        # Count assets with open directories
+        open_dirs_count = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.open_directories.has_issues": {"$eq": True}
+        })
+        if open_dirs_count > 0:
+            factors.append({
+                "name": "Open Directories",
+                "count": open_dirs_count,
+                "percentage": round((open_dirs_count / total_assets) * 100, 1)
             })
 
         # Count assets with breach history
@@ -380,11 +500,11 @@ async def get_risk_factors(request: Request):
         # Sort by percentage descending
         factors.sort(key=lambda x: x["percentage"], reverse=True)
 
-        return {"data": {"factors": factors[:6]}}  # Return top 6
+        return {"data": {"factors": factors[:8], "total_assets": total_assets}}  # Return top 8 with total
 
     except Exception as e:
         logger.error(f"Failed to get risk factors: {str(e)}")
-        return {"data": {"factors": []}}
+        return {"data": {"factors": [], "total_assets": 0}}
 
 
 @router.get("/security-insights")
@@ -417,68 +537,28 @@ async def get_security_insights(request: Request):
             sort=[("completed_at", -1)]
         )
 
-        # Insight 1: Asset Monitoring Status
-        if last_scan:
-            from datetime import datetime, timedelta
-            last_scan_time = last_scan.get("completed_at")
-            if last_scan_time:
-                hours_since_scan = (datetime.utcnow() - last_scan_time).total_seconds() / 3600
-                if hours_since_scan < 24:
-                    insights.append({
-                        "type": "success",
-                        "title": "Active Monitoring",
-                        "message": f"Last scan completed {int(hours_since_scan)} hours ago. Your assets are being actively monitored.",
-                        "action": None,
-                        "priority": "low"
-                    })
-                else:
-                    insights.append({
-                        "type": "warning",
-                        "title": "Scan Outdated",
-                        "message": f"Last scan was {int(hours_since_scan/24)} days ago. Run a new scan to detect recent changes.",
-                        "action": "Run Scan Now",
-                        "priority": "medium"
-                    })
-        else:
-            insights.append({
-                "type": "info",
-                "title": "Start Monitoring",
-                "message": "No completed scans yet. Start your first scan to discover assets.",
-                "action": "Start First Scan",
-                "priority": "high"
-            })
-
-        # Insight 2: High-Risk Assets
+        # Insight 1: High-Risk Assets
         if high_risk_assets > 0:
             insights.append({
                 "type": "critical",
                 "title": "Critical Assets Detected",
                 "message": f"{high_risk_assets} asset(s) have risk scores above 70 and require immediate attention.",
-                "action": "View High-Risk Assets",
                 "priority": "critical",
                 "stats": {
                     "count": high_risk_assets,
                     "total": total_assets
                 }
             })
-        elif total_assets > 0:
-            insights.append({
-                "type": "success",
-                "title": "Low Risk Profile",
-                "message": f"No assets with critical risk scores. Keep monitoring to maintain security posture.",
-                "action": None,
-                "priority": "low"
-            })
 
         # Insight 3: Exposed Services
         ssh_exposed = await assets_collection.count_documents({
             "user_id": uid,
-            "open_ports": 22
+            "open_ports": {"$in": [22]}  # More explicit array check
         })
         
         db_exposed = await assets_collection.count_documents({
             "user_id": uid,
-            "open_ports": {"$in": [3306, 5432, 27017, 6379]}
+            "open_ports": {"$in": [3306, 5432, 27017, 6379]}  # Check if any DB port is in array
         })
 
         if ssh_exposed > 0 or db_exposed > 0:
@@ -492,7 +572,6 @@ async def get_security_insights(request: Request):
                 "type": "warning",
                 "title": "Exposed Services",
                 "message": f"Found {', '.join(exposed_services)} port(s) exposed to the internet. Review access controls.",
-                "action": "Review Exposed Services",
                 "priority": "high",
                 "stats": {
                     "ssh": ssh_exposed,
@@ -500,29 +579,42 @@ async def get_security_insights(request: Request):
                 }
             })
 
-        # Insight 4: SSL/TLS Status
-        invalid_ssl = await assets_collection.count_documents({
+        # Insight 3: SSL/TLS Status (check both top-level and nested)
+        invalid_ssl_top = await assets_collection.count_documents({
             "user_id": uid,
             "ssl_cert_valid": False
         })
+        
+        ssl_issues_nested = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.ssl.has_issues": {"$eq": True}
+        })
+        
+        invalid_ssl = max(invalid_ssl_top, ssl_issues_nested)
 
         if invalid_ssl > 0:
             insights.append({
                 "type": "warning",
                 "title": "SSL Certificate Issues",
-                "message": f"{invalid_ssl} asset(s) have invalid or expired SSL certificates. This affects trust and security.",
-                "action": "Fix SSL Certificates",
+                "message": f"{invalid_ssl} asset(s) have SSL/TLS certificate issues. This affects trust and security.",
                 "priority": "high",
                 "stats": {
                     "count": invalid_ssl
                 }
             })
 
-        # Insight 5: Security Headers
-        missing_headers = await assets_collection.count_documents({
+        # Insight 4: Security Headers (check both top-level and nested)
+        missing_headers_top = await assets_collection.count_documents({
             "user_id": uid,
             "http_security_headers_score": {"$lt": 3}
         })
+        
+        missing_headers_nested = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.web_headers.has_issues": {"$eq": True}
+        })
+        
+        missing_headers = max(missing_headers_top, missing_headers_nested)
 
         if missing_headers > 0:
             percentage = round((missing_headers / total_assets) * 100) if total_assets > 0 else 0
@@ -530,7 +622,6 @@ async def get_security_insights(request: Request):
                 "type": "info",
                 "title": "Security Headers",
                 "message": f"{percentage}% of assets are missing critical security headers. Consider implementing CSP, HSTS, and X-Frame-Options.",
-                "action": "View Header Recommendations",
                 "priority": "medium",
                 "stats": {
                     "count": missing_headers,
@@ -538,30 +629,88 @@ async def get_security_insights(request: Request):
                 }
             })
 
-        # Insight 6: Asset Growth Trend
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-        new_assets = await assets_collection.count_documents({
+        # Insight 5: DNS Misconfigurations
+        dns_issues = await assets_collection.count_documents({
             "user_id": uid,
-            "discovered_at": {"$gte": thirty_days_ago}
+            "misconfigurations.dns.has_issues": {"$eq": True}
         })
-
-        if new_assets > 0 and total_assets > 0:
-            percentage = round((new_assets / total_assets) * 100)
+        
+        if dns_issues > 0:
+            percentage = round((dns_issues / total_assets) * 100) if total_assets > 0 else 0
             insights.append({
-                "type": "info",
-                "title": "Asset Discovery",
-                "message": f"Discovered {new_assets} new asset(s) in the last 30 days ({percentage}% growth). Monitor new additions closely.",
-                "action": None,
-                "priority": "low",
+                "type": "warning",
+                "title": "DNS Misconfigurations",
+                "message": f"{dns_issues} asset(s) have DNS misconfigurations (missing SPF, DMARC, or other DNS records). This can lead to email spoofing and security issues.",
+                "priority": "high",
                 "stats": {
-                    "new": new_assets,
-                    "total": total_assets
+                    "count": dns_issues,
+                    "percentage": percentage
                 }
             })
+
+        # Insight 6: Exposed Cloud Storage
+        cloud_buckets = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.cloud_buckets.has_issues": {"$eq": True}
+        })
+        
+        if cloud_buckets > 0:
+            insights.append({
+                "type": "critical",
+                "title": "Exposed Cloud Storage",
+                "message": f"{cloud_buckets} asset(s) have exposed cloud storage buckets. This is a critical security risk that can lead to data breaches.",
+                "priority": "critical",
+                "stats": {
+                    "count": cloud_buckets
+                }
+            })
+
+        # Insight 7: Exposed Sensitive Files
+        sensitive_files = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.security_files.has_issues": {"$eq": True}
+        })
+        
+        if sensitive_files > 0:
+            insights.append({
+                "type": "critical",
+                "title": "Exposed Sensitive Files",
+                "message": f"{sensitive_files} asset(s) have exposed sensitive files (config files, credentials, etc.). This is a critical security risk.",
+                "priority": "critical",
+                "stats": {
+                    "count": sensitive_files
+                }
+            })
+
+        # Insight 8: Open Directories
+        open_dirs = await assets_collection.count_documents({
+            "user_id": uid,
+            "misconfigurations.open_directories.has_issues": {"$eq": True}
+        })
+        
+        if open_dirs > 0:
+            insights.append({
+                "type": "warning",
+                "title": "Open Directory Listings",
+                "message": f"{open_dirs} asset(s) have open directory listings enabled. This exposes file structure and can lead to information disclosure.",
+                "priority": "medium",
+                "stats": {
+                    "count": open_dirs
+                }
+            })
+
+        # Insight 10: Asset Growth Trend (renumbered)
 
         # Sort by priority
         priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         insights.sort(key=lambda x: priority_order.get(x["priority"], 4))
+
+        # Generate AI-powered recommendations for high-priority insights
+        try:
+            insights = await generate_batch_recommendations(insights)
+        except Exception as e:
+            logger.warning(f"Failed to generate LLM recommendations: {str(e)}")
+            # Continue without recommendations if LLM fails
 
         return {"data": {"insights": insights}}
 

@@ -380,6 +380,34 @@ async def export_assets(
         logger.error(f"Failed to export assets: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to export report")
 
+@router.delete("/")
+async def clear_all_assets(request: Request):
+    """
+    Clear all scanned records (assets) for the current user.
+    """
+    user = get_current_user(request)
+    uid = user["uid"]
+
+    try:
+        assets_collection = get_collection("assets")
+
+        # Delete all assets for this user
+        result = await assets_collection.delete_many({"user_id": uid})
+        
+        logger.info(f"Cleared {result.deleted_count} assets for user {uid}")
+
+        return {
+            "data": {
+                "deleted_count": result.deleted_count
+            },
+            "message": f"Successfully cleared {result.deleted_count} asset(s)"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to clear assets: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to clear assets")
+
+
 @router.get("/{asset_id}")
 async def get_asset_details(request: Request, asset_id: str):
     """

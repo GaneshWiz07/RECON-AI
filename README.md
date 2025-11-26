@@ -136,6 +136,9 @@ FIREBASE_CLIENT_EMAIL=firebase-adminsdk@your-project.iam.gserviceaccount.com
 STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
 STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 
+# Groq LLM (for AI-powered security recommendations)
+GROQ_API_KEY=your_groq_api_key_here
+
 # Application Settings
 ENVIRONMENT=development
 PORT=8000
