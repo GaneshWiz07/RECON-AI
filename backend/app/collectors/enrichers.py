@@ -6,6 +6,7 @@ Additional data enrichment for discovered assets
 
 import logging
 import os
+import asyncio
 from typing import Dict
 import dns.resolver
 import httpx
@@ -127,7 +128,7 @@ async def check_security_headers(domain: str) -> Dict:
 
 async def check_breach_history(domain: str) -> int:
     """
-    Check breach history using HaveIBeenPwned API (exposedornot).
+    Check breach history using XposedOrNot API (free public API).
 
     Args:
         domain: Domain to check
@@ -136,47 +137,91 @@ async def check_breach_history(domain: str) -> int:
         Number of breaches found
     """
     try:
-        # Use the correct HaveIBeenPwned API endpoint for domain breaches
         # Clean domain (remove protocol, www, etc.)
         clean_domain = domain.replace('https://', '').replace('http://', '').split('/')[0]
         clean_domain = clean_domain.replace('www.', '').split(':')[0]
         
-        url = f"https://haveibeenpwned.com/api/v3/breacheddomain/{clean_domain}"
-
+        # XposedOrNot API endpoint for domain breach checking
+        # Check common email addresses associated with the domain
+        # Common email patterns to check: admin, info, contact, support, noreply
+        common_emails = [
+            f"admin@{clean_domain}",
+            f"info@{clean_domain}",
+            f"contact@{clean_domain}",
+            f"support@{clean_domain}",
+            f"noreply@{clean_domain}"
+        ]
+        
+        breach_count = 0
+        checked_emails = set()
+        
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                url,
-                headers={
-                    "User-Agent": "ReconAI-Scanner",
-                    "hibp-api-key": os.getenv("HIBP_API_KEY", "")  # Optional API key for higher rate limits
-                }
-            )
+            for email in common_emails:
+                try:
+                    # XposedOrNot API endpoint for email breach checking
+                    url = f"https://api.xposedornot.com/v1/check-email/{email}"
+                    
+                    response = await client.get(
+                        url,
+                        headers={
+                            "User-Agent": "ReconAI-Scanner",
+                            "Accept": "application/json"
+                        }
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        # Check if email has been exposed
+                        if isinstance(data, dict):
+                            # XposedOrNot API returns {"breaches": [["breach1", "breach2", ...]]} for exposed emails
+                            # Or {"Error": "Not found", "email": null} for non-exposed emails
+                            if "breaches" in data and isinstance(data["breaches"], list) and len(data["breaches"]) > 0:
+                                # breaches is a nested list: [["breach1", "breach2", ...]]
+                                breaches_list = data["breaches"][0] if isinstance(data["breaches"][0], list) else data["breaches"]
+                                breach_count += len(breaches_list)
+                                checked_emails.add(email)
+                                logger.debug(f"Found {len(breaches_list)} breaches for {email}")
+                            elif "Error" in data and data.get("Error") == "Not found":
+                                # No breaches found for this email
+                                logger.debug(f"No breaches found for {email}")
+                                continue
+                            elif data.get("exposed", False) or data.get("breach_count", 0) > 0:
+                                # Fallback for other response formats
+                                breach_count += data.get("breach_count", 1)
+                                checked_emails.add(email)
+                                logger.debug(f"Found breach for {email}: {data.get('breach_count', 1)} breaches")
+                        elif isinstance(data, list) and len(data) > 0:
+                            # Response is a list of breaches
+                            breach_count += len(data)
+                            checked_emails.add(email)
+                            logger.debug(f"Found {len(data)} breaches for {email}")
+                    elif response.status_code == 404:
+                        # No breaches found for this email
+                        continue
+                    elif response.status_code == 429:
+                        logger.warning(f"Rate limited by XposedOrNot API for {email}")
+                        break
+                    else:
+                        logger.debug(f"Unexpected status {response.status_code} from XposedOrNot API for {email}")
+                    
+                    # Small delay to respect rate limits
+                    await asyncio.sleep(0.5)
+                    
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        continue
+                    logger.debug(f"HTTP error checking {email}: {str(e)}")
+                except Exception as e:
+                    logger.debug(f"Error checking {email}: {str(e)}")
+                    continue
+        
+        if breach_count > 0:
+            logger.info(f"Found {breach_count} total breaches for domain {clean_domain} (checked {len(checked_emails)} emails)")
+        else:
+            logger.debug(f"No breaches found for domain {clean_domain}")
+        
+        return breach_count
 
-            if response.status_code == 404:
-                # No breaches found for this domain
-                logger.info(f"No breaches found for {clean_domain}")
-                return 0
-
-            if response.status_code == 200:
-                breaches = response.json()
-                # Response is a list of breach objects
-                breach_count = len(breaches) if isinstance(breaches, list) else 0
-                logger.info(f"Found {breach_count} breaches for {clean_domain}")
-                return breach_count
-
-            # Handle rate limiting (429) or other errors
-            if response.status_code == 429:
-                logger.warning(f"Rate limited by HaveIBeenPwned API for {clean_domain}")
-            else:
-                logger.warning(f"Unexpected status {response.status_code} from HaveIBeenPwned API for {clean_domain}")
-            
-            return 0
-
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            return 0
-        logger.warning(f"HTTP error checking breach history for {domain}: {str(e)}")
-        return 0
     except Exception as e:
         logger.warning(f"Breach history check failed for {domain}: {str(e)}")
         return 0

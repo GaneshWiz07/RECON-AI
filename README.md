@@ -139,8 +139,8 @@ STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 # Groq LLM (for AI-powered security recommendations)
 GROQ_API_KEY=your_groq_api_key_here
 
-# Have I Been Pwned API (optional - for breach data, higher rate limits with API key)
-HIBP_API_KEY=your_hibp_api_key_here
+# XposedOrNot API (free public API for breach data - no API key required)
+# Note: Uses XposedOrNot API (https://api.xposedornot.com) for checking data breaches
 
 # Application Settings
 ENVIRONMENT=development
