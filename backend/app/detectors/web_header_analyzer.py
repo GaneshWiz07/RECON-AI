@@ -5,6 +5,7 @@ Checks for missing or misconfigured HTTP security headers
 """
 
 import aiohttp
+import asyncio
 import logging
 from typing import Dict, List
 

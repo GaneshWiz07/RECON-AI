@@ -226,18 +226,27 @@ async def _execute_scan_async(scan_id: str, domain: str, user_id: str):
         assets_saved = 0
         for asset_data in merged_assets:
             try:
+                # Get asset URL for checks
+                asset_value = asset_data.get("asset_value", domain)
+                
                 # Enrich with DNS records
-                dns_records = await enrich_dns(asset_data.get("asset_value", domain))
+                dns_records = await enrich_dns(asset_value)
                 asset_data["dns_records"] = dns_records
 
-                # Check security headers
-                headers_data = await check_security_headers(domain)
+                # Check security headers - use asset URL, not just parent domain
+                headers_data = await check_security_headers(asset_value)
                 asset_data["http_security_headers_score"] = headers_data["score"]
                 asset_data["missing_security_headers"] = headers_data["missing"]
 
-                # Check breach history
-                breach_count = await check_breach_history(domain)
-                asset_data["breach_history_count"] = breach_count
+                # Check breach history - check both asset domain and parent domain
+                # Extract domain from asset_value (could be subdomain)
+                asset_domain = asset_value.replace('https://', '').replace('http://', '').split('/')[0].split(':')[0]
+                parent_domain = domain.replace('https://', '').replace('http://', '').split('/')[0].split(':')[0]
+                
+                breach_count_asset = await check_breach_history(asset_domain)
+                breach_count_parent = await check_breach_history(parent_domain) if asset_domain != parent_domain else 0
+                # Use the maximum count (asset might be subdomain, parent might have breaches)
+                asset_data["breach_history_count"] = max(breach_count_asset, breach_count_parent)
 
                 # Detect outdated software
                 outdated_count = detect_outdated_software(asset_data.get("technologies", []))

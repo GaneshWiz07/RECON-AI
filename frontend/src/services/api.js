@@ -46,7 +46,11 @@ api.interceptors.request.use(
 // Response interceptor - Handle errors
 api.interceptors.response.use(
   (response) => {
-    // Return response data directly
+    // For blob responses, return the full response object
+    if (response.config.responseType === 'blob') {
+      return response;
+    }
+    // Return response data directly for other responses
     return response.data;
   },
   (error) => {

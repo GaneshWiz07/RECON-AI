@@ -18,6 +18,12 @@ const Assets = () => {
   const [scanNotification, setScanNotification] = useState(null);
   const [scannedDomain, setScannedDomain] = useState('');
   const [userPlan, setUserPlan] = useState('free');
+  const [misconfigurationRecommendations, setMisconfigurationRecommendations] = useState({});
+  const [summaryRecommendation, setSummaryRecommendation] = useState(null);
+  const [loadingRecommendations, setLoadingRecommendations] = useState({});
+  const [loadingSummaryRecommendation, setLoadingSummaryRecommendation] = useState(false);
+  const [securityTerms, setSecurityTerms] = useState([]);
+  const [loadingSecurityTerms, setLoadingSecurityTerms] = useState(false);
 
   useEffect(() => {
     fetchAssets();
@@ -46,12 +52,171 @@ const Assets = () => {
       const response = await api.get(`/api/assets/?page=${currentPage}&search=${searchTerm}`);
       console.log('Assets response:', response.data); // Debug log
       const assetsData = response.data.data || response.data;
-      setAssets(assetsData.assets || []);
+      const fetchedAssets = assetsData.assets || [];
+      setAssets(fetchedAssets);
       setTotalPages(assetsData.pagination?.total_pages || assetsData.total_pages || 1);
+      
+      // Fetch security terms when assets are loaded
+      if (fetchedAssets.length > 0 && securityTerms.length === 0) {
+        fetchSecurityTerms();
+      }
     } catch (error) {
       console.error('Failed to fetch assets:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMisconfigurationRecommendation = async (assetId) => {
+    if (!assetId) {
+      console.error('Asset ID is missing');
+      return;
+    }
+    
+    // Check if already fetched or currently loading
+    if (misconfigurationRecommendations[assetId] || loadingRecommendations[assetId]) {
+      console.log('Recommendation already fetched or loading for:', assetId);
+      return;
+    }
+    
+    try {
+      console.log('Starting to fetch recommendation for asset:', assetId);
+      setLoadingRecommendations(prev => {
+        const updated = { ...prev, [assetId]: true };
+        console.log('Updated loading state:', updated);
+        return updated;
+      });
+      
+      const response = await api.post('/api/assets/misconfiguration-recommendation', {
+        asset_id: assetId
+      });
+      
+      console.log('Recommendation response received:', response.data);
+      console.log('Full response structure:', JSON.stringify(response.data, null, 2));
+      
+      // Handle different response structures
+      const recommendation = response.data?.data?.recommendation 
+        || response.data?.recommendation 
+        || response.data?.data?.data?.recommendation
+        || null;
+      
+      console.log('Extracted recommendation:', recommendation);
+      console.log('Recommendation type:', typeof recommendation);
+      console.log('Recommendation length:', recommendation?.length);
+      
+      // Check if recommendation exists and is not empty
+      if (recommendation && recommendation.trim().length > 0) {
+        setMisconfigurationRecommendations(prev => {
+          const updated = { ...prev, [assetId]: recommendation.trim() };
+          console.log('Updated recommendations state:', updated);
+          return updated;
+        });
+      } else {
+        console.warn('No recommendation in response or recommendation is empty');
+        console.warn('Response data:', response.data);
+        setMisconfigurationRecommendations(prev => ({
+          ...prev,
+          [assetId]: 'Unable to generate AI recommendations. Please check console for details.'
+        }));
+      }
+    } catch (error) {
+      console.error(`Failed to fetch recommendation for asset ${assetId}:`, error);
+      console.error('Error details:', error.response?.data || error.message);
+      setMisconfigurationRecommendations(prev => ({
+        ...prev,
+        [assetId]: error.response?.data?.detail || 'Unable to load AI recommendations at this time.'
+      }));
+    } finally {
+      setLoadingRecommendations(prev => {
+        const updated = { ...prev, [assetId]: false };
+        console.log('Cleared loading state for:', assetId, updated);
+        return updated;
+      });
+    }
+  };
+
+  const fetchSummaryRecommendation = async () => {
+    if (loadingSummaryRecommendation) {
+      console.log('Summary recommendation already loading');
+      return; // Already loading
+    }
+    
+    try {
+      console.log('Starting to fetch summary recommendation');
+      setLoadingSummaryRecommendation(true);
+      
+      const response = await api.post('/api/assets/summary-recommendation', {});
+      console.log('Summary recommendation response received:', response.data);
+      console.log('Full response structure:', JSON.stringify(response.data, null, 2));
+      
+      // Handle different response structures
+      const recommendation = response.data?.data?.recommendation 
+        || response.data?.recommendation 
+        || response.data?.data?.data?.recommendation
+        || null;
+      
+      console.log('Extracted summary recommendation:', recommendation);
+      console.log('Recommendation type:', typeof recommendation);
+      console.log('Recommendation length:', recommendation?.length);
+      
+      // Check if recommendation exists and is not empty
+      if (recommendation && recommendation.trim().length > 0) {
+        setSummaryRecommendation(recommendation.trim());
+      } else {
+        console.warn('No recommendation in response or recommendation is empty');
+        console.warn('Response data:', response.data);
+        setSummaryRecommendation('Unable to generate AI recommendations. Please check console for details.');
+      }
+    } catch (error) {
+      console.error('Failed to fetch summary recommendation:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      setSummaryRecommendation(error.response?.data?.detail || 'Unable to load AI recommendations at this time.');
+    } finally {
+      setLoadingSummaryRecommendation(false);
+    }
+  };
+
+  const fetchSecurityTerms = async () => {
+    if (loadingSecurityTerms || securityTerms.length > 0) {
+      return; // Already loading or fetched
+    }
+    
+    try {
+      console.log('Starting to fetch security terms');
+      setLoadingSecurityTerms(true);
+      
+      const response = await api.post('/api/assets/security-terms', {});
+      console.log('Security terms response received:', response.data);
+      
+      const terms = response.data?.data?.terms || [];
+      console.log('Extracted security terms:', terms);
+      
+      if (terms && terms.length > 0) {
+        setSecurityTerms(terms);
+      } else {
+        // Fallback to default terms if AI generation fails
+        setSecurityTerms([
+          ['Phishing', 'Fake Message'],
+          ['Smishing', 'Fake SMS'],
+          ['Vishing', 'Fake Call'],
+          ['Malware', 'Harmful File'],
+          ['Ransomware', 'Lock Attack'],
+          ['Data Leak', 'Info Spill'],
+        ]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch security terms:', error);
+      // Fallback to default terms on error
+      setSecurityTerms([
+        ['Phishing', 'Fake Message'],
+        ['Smishing', 'Fake SMS'],
+        ['Vishing', 'Fake Call'],
+        ['Malware', 'Harmful File'],
+        ['Ransomware', 'Lock Attack'],
+        ['Data Leak', 'Info Spill'],
+      ]);
+    } finally {
+      setLoadingSecurityTerms(false);
     }
   };
 
@@ -213,52 +378,8 @@ const Assets = () => {
     asset.asset_type.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Generate deterministic hash from string
-  const hashString = (str) => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return Math.abs(hash);
-  };
-
-  // Generate deterministic breach data for discovered assets
-  const getAssetBreaches = (asset) => {
-    // Simulate breach data based on asset risk score
-    const hasBreaches = asset.risk_score > 15; // Higher risk = more likely to have breaches
-
-    if (!hasBreaches) return null;
-
-    // Use domain as seed for consistent data
-    const seed = hashString(asset.asset_value);
-
-    // Deterministic random number generator
-    const seededRandom = (index) => {
-      const x = Math.sin(seed + index) * 10000;
-      return x - Math.floor(x);
-    };
-
-    const totalBreaches = Math.floor(asset.risk_score / 10) + 1;
-    const emails = Math.floor(seededRandom(1) * 50) + 5;
-    const passwords = Math.floor(seededRandom(2) * 30) + 2;
-
-    // Deterministic date (always same for same domain)
-    const daysAgo = Math.floor(seededRandom(3) * 365);
-    const breachDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
-    const lastSeen = breachDate.toLocaleDateString();
-
-    return {
-      domain: asset.asset_value,
-      totalBreaches,
-      emails,
-      passwords,
-      lastSeen
-    };
-  };
-
-  const assetsWithBreaches = filteredAssets.filter(asset => getAssetBreaches(asset) !== null);
+  // Filter assets with real breach history from database
+  const assetsWithBreaches = filteredAssets.filter(asset => (asset.breach_history_count || 0) > 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-indigo-900/20 to-gray-900">
@@ -685,37 +806,69 @@ const Assets = () => {
                         </div>
                       )}
                     </div>
+
+                    {/* AI-Powered Security Recommendations */}
+                    {(() => {
+                      // Use asset_id if available, otherwise use asset_value as fallback identifier
+                      // IMPORTANT: This must match what we send to the API
+                      const assetId = asset.asset_id || asset.asset_value;
+                      
+                      // Only show if we have a valid asset identifier
+                      if (!assetId) {
+                        return null;
+                      }
+                      
+                      const recommendation = misconfigurationRecommendations[assetId];
+                      const isLoading = loadingRecommendations[assetId];
+                      
+                      return (
+                        <div className="mt-6 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-blue-200 font-semibold flex items-center gap-2">
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              </svg>
+                              AI Security Recommendations
+                              <span className="text-xs bg-purple-500/30 text-purple-200 px-2 py-0.5 rounded-full ml-2">AI-Powered</span>
+                            </h4>
+                            {!recommendation && !isLoading && (
+                              <button
+                                onClick={() => {
+                                  console.log('Generating recommendation for asset:', {
+                                    assetId,
+                                    asset_id: asset.asset_id,
+                                    asset_value: asset.asset_value,
+                                    currentRecommendations: misconfigurationRecommendations,
+                                    currentLoading: loadingRecommendations
+                                  });
+                                  fetchMisconfigurationRecommendation(assetId);
+                                }}
+                                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-full transition-colors"
+                              >
+                                Generate
+                              </button>
+                            )}
+                          </div>
+                          {isLoading ? (
+                            <div className="flex items-center gap-2 text-blue-300 text-sm">
+                              <LoadingSpinner size="sm" />
+                              <span>Generating AI recommendations...</span>
+                            </div>
+                          ) : recommendation ? (
+                            <div className="text-sm text-blue-300 leading-relaxed whitespace-pre-line">
+                              <p className="mt-2">{recommendation}</p>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-400 italic">
+                              Click "Generate" to get AI-powered security recommendations for this asset.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
-            </div>
-
-            {/* Remediation Tips */}
-            <div className="mt-6 bg-blue-900/20 border border-blue-500 rounded-lg p-4">
-              <h4 className="text-blue-200 font-semibold mb-2 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-                Security Recommendations
-              </h4>
-              <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-blue-300">
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">•</span>
-                  <span>Implement missing security headers immediately</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">•</span>
-                  <span>Renew SSL certificates before expiration</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">•</span>
-                  <span>Remove or restrict access to sensitive files</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">•</span>
-                  <span>Configure cloud bucket permissions properly</span>
-                </li>
-              </ul>
             </div>
           </Card>
         )}
@@ -732,8 +885,8 @@ const Assets = () => {
 
             <div className="space-y-6">
               {assetsWithBreaches.map((asset, index) => {
-                const breachData = getAssetBreaches(asset);
-                if (!breachData) return null;
+                const breachCount = asset.breach_history_count || 0;
+                if (breachCount === 0) return null;
 
                 return (
                   <div key={index} className="bg-gray-800 border border-gray-700 rounded-lg p-6">
@@ -746,8 +899,8 @@ const Assets = () => {
                           </svg>
                         </div>
                         <div>
-                          <h3 className="text-white font-semibold font-mono">{breachData.domain}</h3>
-                          <p className="text-sm text-gray-400">{breachData.totalBreaches} breach(es) detected</p>
+                          <h3 className="text-white font-semibold font-mono">{asset.asset_value}</h3>
+                          <p className="text-sm text-gray-400">{breachCount} breach(es) detected via Have I Been Pwned</p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -761,23 +914,16 @@ const Assets = () => {
                       </div>
                     </div>
 
-                    {/* Breach Stats */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                      <div className="bg-gray-900 rounded-lg p-3">
-                        <div className="text-xs text-gray-400 mb-1">Total Breaches</div>
-                        <div className="text-xl font-bold text-red-400">{breachData.totalBreaches}</div>
-                      </div>
-                      <div className="bg-gray-900 rounded-lg p-3">
-                        <div className="text-xs text-gray-400 mb-1">Emails Exposed</div>
-                        <div className="text-xl font-bold text-orange-400">{breachData.emails}</div>
-                      </div>
-                      <div className="bg-gray-900 rounded-lg p-3">
-                        <div className="text-xs text-gray-400 mb-1">Passwords Leaked</div>
-                        <div className="text-xl font-bold text-yellow-400">{breachData.passwords}</div>
-                      </div>
-                      <div className="bg-gray-900 rounded-lg p-3">
-                        <div className="text-xs text-gray-400 mb-1">Last Seen</div>
-                        <div className="text-sm font-semibold text-gray-300">{breachData.lastSeen}</div>
+                    {/* Breach Info */}
+                    <div className="bg-gray-900 rounded-lg p-4">
+                      <div className="flex items-center gap-2 text-sm text-gray-300">
+                        <svg className="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                        <span>
+                          This domain has been involved in <strong className="text-red-400">{breachCount}</strong> known data breach(es) according to Have I Been Pwned database.
+                          Review security practices and consider password rotation for affected accounts.
+                        </span>
                       </div>
                     </div>
 
@@ -819,11 +965,55 @@ const Assets = () => {
         {/* Summary Report Section */}
         {assets.length > 0 && (
           <Card className="mt-8">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-white">📊 Security Summary Report</h2>
-              <p className="text-sm text-gray-400 mt-1">
-                Comprehensive overview of your assets, vulnerabilities, and security status
-              </p>
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-white">📊 Security Summary Report</h2>
+                <p className="text-sm text-gray-400 mt-1">
+                  Comprehensive overview of your assets, vulnerabilities, and security status
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await api.get('/api/assets/export-detailed-report', {
+                      responseType: 'blob',
+                      headers: {
+                        'Accept': 'application/pdf'
+                      }
+                    });
+                    
+                    // When responseType is 'blob', the interceptor returns the full response
+                    // So response is the full axios response, and response.data is the Blob
+                    const blob = response.data || response;
+                    
+                    // Verify blob is not empty
+                    if (!blob || (blob.size !== undefined && blob.size === 0)) {
+                      console.error('PDF blob is empty or invalid:', blob);
+                      throw new Error('PDF file is empty');
+                    }
+                    
+                    // Create download link
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', `detailed_security_report_${new Date().toISOString().split('T')[0]}.pdf`);
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(url);
+                  } catch (error) {
+                    console.error('Failed to export detailed report:', error);
+                    console.error('Error details:', error.response || error);
+                    alert(`Failed to export detailed report: ${error.message || 'Unknown error'}. Please try again.`);
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export Detailed PDF Report
+              </button>
             </div>
 
             {/* SME-Friendly Terms Section */}
@@ -834,24 +1024,25 @@ const Assets = () => {
                 </svg>
                 Easy Terms for Business Owners
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {[
-                  ['Phishing', 'Fake Message'],
-                  ['Smishing', 'Fake SMS'],
-                  ['Vishing', 'Fake Call'],
-                  ['Whaling', 'Boss Scam'],
-                  ['Baiting', 'Free Trap'],
-                  ['Malware', 'Harmful File'],
-                  ['Ransomware', 'Lock Attack'],
-                  ['Data Leak', 'Info Spill'],
-                  ['Weak Passwords', 'Easy Login'],
-                ].map(([tech, simple], idx) => (
-                  <div key={idx} className="bg-gray-800/50 rounded-lg p-3">
-                    <div className="text-sm font-semibold text-blue-300">{tech}</div>
-                    <div className="text-xs text-gray-400 mt-1">→ {simple}</div>
-                  </div>
-                ))}
-              </div>
+              {loadingSecurityTerms ? (
+                <div className="flex items-center justify-center gap-2 text-blue-300 py-8">
+                  <LoadingSpinner size="sm" />
+                  <span className="text-sm">Generating relevant security terms based on your scan...</span>
+                </div>
+              ) : securityTerms.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {securityTerms.map(([tech, simple], idx) => (
+                    <div key={idx} className="bg-gray-800/50 rounded-lg p-3">
+                      <div className="text-sm font-semibold text-blue-300">{tech}</div>
+                      <div className="text-xs text-gray-400 mt-1">→ {simple}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400 italic py-4">
+                  Loading security terms based on your scan results...
+                </div>
+              )}
             </div>
 
             {/* Overall Statistics */}
@@ -955,40 +1146,42 @@ const Assets = () => {
               </div>
             </div>
 
-            {/* Action Items */}
-            <div className="bg-blue-900/20 border border-blue-500 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-blue-200 mb-4 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                What You Should Do Next
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">1.</span>
-                  <span className="text-blue-300">Fix critical security headers immediately</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">2.</span>
-                  <span className="text-blue-300">Renew or update SSL certificates</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">3.</span>
-                  <span className="text-blue-300">Remove exposed sensitive files</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">4.</span>
-                  <span className="text-blue-300">Configure cloud bucket permissions</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">5.</span>
-                  <span className="text-blue-300">Disable directory listings</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-blue-400 mt-0.5">6.</span>
-                  <span className="text-blue-300">Rotate credentials if breaches found</span>
-                </div>
+            {/* AI-Powered Strategic Recommendations */}
+            <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-blue-200 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Strategic Security Recommendations
+                  <span className="text-xs bg-purple-500/30 text-purple-200 px-2 py-0.5 rounded-full ml-2">AI-Powered</span>
+                </h3>
+                {!summaryRecommendation && !loadingSummaryRecommendation && (
+                  <button
+                    onClick={() => {
+                      console.log('Generate button clicked for summary recommendation');
+                      fetchSummaryRecommendation();
+                    }}
+                    className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-full transition-colors"
+                  >
+                    Generate
+                  </button>
+                )}
               </div>
+              {loadingSummaryRecommendation ? (
+                <div className="flex items-center gap-2 text-blue-300 text-sm">
+                  <LoadingSpinner size="sm" />
+                  <span>Generating AI strategic recommendations...</span>
+                </div>
+              ) : summaryRecommendation ? (
+                <div className="text-sm text-blue-300 leading-relaxed whitespace-pre-line">
+                  {summaryRecommendation}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400 italic">
+                  Click "Generate" to get AI-powered strategic recommendations based on your security scan results.
+                </div>
+              )}
             </div>
           </Card>
         )}

@@ -139,6 +139,9 @@ STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 # Groq LLM (for AI-powered security recommendations)
 GROQ_API_KEY=your_groq_api_key_here
 
+# Have I Been Pwned API (optional - for breach data, higher rate limits with API key)
+HIBP_API_KEY=your_hibp_api_key_here
+
 # Application Settings
 ENVIRONMENT=development
 PORT=8000

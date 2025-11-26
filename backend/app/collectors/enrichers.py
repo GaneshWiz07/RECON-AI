@@ -5,6 +5,7 @@ Additional data enrichment for discovered assets
 """
 
 import logging
+import os
 from typing import Dict
 import dns.resolver
 import httpx
@@ -126,7 +127,7 @@ async def check_security_headers(domain: str) -> Dict:
 
 async def check_breach_history(domain: str) -> int:
     """
-    Check breach history using HaveIBeenPwned API.
+    Check breach history using HaveIBeenPwned API (exposedornot).
 
     Args:
         domain: Domain to check
@@ -135,27 +136,47 @@ async def check_breach_history(domain: str) -> int:
         Number of breaches found
     """
     try:
-        url = f"https://haveibeenpwned.com/api/v3/breaches"
+        # Use the correct HaveIBeenPwned API endpoint for domain breaches
+        # Clean domain (remove protocol, www, etc.)
+        clean_domain = domain.replace('https://', '').replace('http://', '').split('/')[0]
+        clean_domain = clean_domain.replace('www.', '').split(':')[0]
+        
+        url = f"https://haveibeenpwned.com/api/v3/breacheddomain/{clean_domain}"
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
                 url,
-                params={"domain": domain},
-                headers={"User-Agent": "ReconAI-Scanner"}
+                headers={
+                    "User-Agent": "ReconAI-Scanner",
+                    "hibp-api-key": os.getenv("HIBP_API_KEY", "")  # Optional API key for higher rate limits
+                }
             )
 
             if response.status_code == 404:
-                # No breaches found
+                # No breaches found for this domain
+                logger.info(f"No breaches found for {clean_domain}")
                 return 0
 
             if response.status_code == 200:
                 breaches = response.json()
-                breach_count = len(breaches)
-                logger.info(f"Found {breach_count} breaches for {domain}")
+                # Response is a list of breach objects
+                breach_count = len(breaches) if isinstance(breaches, list) else 0
+                logger.info(f"Found {breach_count} breaches for {clean_domain}")
                 return breach_count
 
+            # Handle rate limiting (429) or other errors
+            if response.status_code == 429:
+                logger.warning(f"Rate limited by HaveIBeenPwned API for {clean_domain}")
+            else:
+                logger.warning(f"Unexpected status {response.status_code} from HaveIBeenPwned API for {clean_domain}")
+            
             return 0
 
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return 0
+        logger.warning(f"HTTP error checking breach history for {domain}: {str(e)}")
+        return 0
     except Exception as e:
         logger.warning(f"Breach history check failed for {domain}: {str(e)}")
         return 0
