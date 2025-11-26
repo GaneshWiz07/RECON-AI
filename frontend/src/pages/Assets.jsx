@@ -42,7 +42,7 @@ const Assets = () => {
       const response = await api.get('/api/billing/subscription');
       setUserPlan(response.data.data?.plan || 'free');
     } catch (error) {
-      console.error('Failed to fetch user plan:', error);
+      // Silently handle error
     }
   };
 
@@ -50,7 +50,6 @@ const Assets = () => {
     try {
       setLoading(true);
       const response = await api.get(`/api/assets/?page=${currentPage}&search=${searchTerm}`);
-      console.log('Assets response:', response.data); // Debug log
       const assetsData = response.data.data || response.data;
       const fetchedAssets = assetsData.assets || [];
       setAssets(fetchedAssets);
@@ -61,7 +60,7 @@ const Assets = () => {
         fetchSecurityTerms();
       }
     } catch (error) {
-      console.error('Failed to fetch assets:', error);
+      // Silently handle error
     } finally {
       setLoading(false);
     }
@@ -69,21 +68,17 @@ const Assets = () => {
 
   const fetchMisconfigurationRecommendation = async (assetId) => {
     if (!assetId) {
-      console.error('Asset ID is missing');
       return;
     }
     
     // Check if already fetched or currently loading
     if (misconfigurationRecommendations[assetId] || loadingRecommendations[assetId]) {
-      console.log('Recommendation already fetched or loading for:', assetId);
       return;
     }
     
     try {
-      console.log('Starting to fetch recommendation for asset:', assetId);
       setLoadingRecommendations(prev => {
         const updated = { ...prev, [assetId]: true };
-        console.log('Updated loading state:', updated);
         return updated;
       });
       
@@ -91,37 +86,25 @@ const Assets = () => {
         asset_id: assetId
       });
       
-      console.log('Recommendation response received:', response.data);
-      console.log('Full response structure:', JSON.stringify(response.data, null, 2));
-      
       // Handle different response structures
       const recommendation = response.data?.data?.recommendation 
         || response.data?.recommendation 
         || response.data?.data?.data?.recommendation
         || null;
       
-      console.log('Extracted recommendation:', recommendation);
-      console.log('Recommendation type:', typeof recommendation);
-      console.log('Recommendation length:', recommendation?.length);
-      
       // Check if recommendation exists and is not empty
       if (recommendation && recommendation.trim().length > 0) {
         setMisconfigurationRecommendations(prev => {
           const updated = { ...prev, [assetId]: recommendation.trim() };
-          console.log('Updated recommendations state:', updated);
           return updated;
         });
       } else {
-        console.warn('No recommendation in response or recommendation is empty');
-        console.warn('Response data:', response.data);
         setMisconfigurationRecommendations(prev => ({
           ...prev,
-          [assetId]: 'Unable to generate AI recommendations. Please check console for details.'
+          [assetId]: 'Unable to generate AI recommendations at this time.'
         }));
       }
     } catch (error) {
-      console.error(`Failed to fetch recommendation for asset ${assetId}:`, error);
-      console.error('Error details:', error.response?.data || error.message);
       setMisconfigurationRecommendations(prev => ({
         ...prev,
         [assetId]: error.response?.data?.detail || 'Unable to load AI recommendations at this time.'
@@ -129,7 +112,6 @@ const Assets = () => {
     } finally {
       setLoadingRecommendations(prev => {
         const updated = { ...prev, [assetId]: false };
-        console.log('Cleared loading state for:', assetId, updated);
         return updated;
       });
     }
@@ -137,17 +119,13 @@ const Assets = () => {
 
   const fetchSummaryRecommendation = async () => {
     if (loadingSummaryRecommendation) {
-      console.log('Summary recommendation already loading');
       return; // Already loading
     }
     
     try {
-      console.log('Starting to fetch summary recommendation');
       setLoadingSummaryRecommendation(true);
       
       const response = await api.post('/api/assets/summary-recommendation', {});
-      console.log('Summary recommendation response received:', response.data);
-      console.log('Full response structure:', JSON.stringify(response.data, null, 2));
       
       // Handle different response structures
       const recommendation = response.data?.data?.recommendation 
@@ -155,21 +133,13 @@ const Assets = () => {
         || response.data?.data?.data?.recommendation
         || null;
       
-      console.log('Extracted summary recommendation:', recommendation);
-      console.log('Recommendation type:', typeof recommendation);
-      console.log('Recommendation length:', recommendation?.length);
-      
       // Check if recommendation exists and is not empty
       if (recommendation && recommendation.trim().length > 0) {
         setSummaryRecommendation(recommendation.trim());
       } else {
-        console.warn('No recommendation in response or recommendation is empty');
-        console.warn('Response data:', response.data);
-        setSummaryRecommendation('Unable to generate AI recommendations. Please check console for details.');
+        setSummaryRecommendation('Unable to generate AI recommendations at this time.');
       }
     } catch (error) {
-      console.error('Failed to fetch summary recommendation:', error);
-      console.error('Error details:', error.response?.data || error.message);
       setSummaryRecommendation(error.response?.data?.detail || 'Unable to load AI recommendations at this time.');
     } finally {
       setLoadingSummaryRecommendation(false);
@@ -182,14 +152,11 @@ const Assets = () => {
     }
     
     try {
-      console.log('Starting to fetch security terms');
       setLoadingSecurityTerms(true);
       
       const response = await api.post('/api/assets/security-terms', {});
-      console.log('Security terms response received:', response.data);
       
       const terms = response.data?.data?.terms || [];
-      console.log('Extracted security terms:', terms);
       
       if (terms && terms.length > 0) {
         setSecurityTerms(terms);
@@ -205,7 +172,6 @@ const Assets = () => {
         ]);
       }
     } catch (error) {
-      console.error('Failed to fetch security terms:', error);
       // Fallback to default terms on error
       setSecurityTerms([
         ['Phishing', 'Fake Message'],
@@ -330,7 +296,6 @@ const Assets = () => {
       setTimeout(() => setScanNotification(null), 10000);
 
     } catch (error) {
-      console.error('Scan failed:', error);
       setScanNotification({
         type: 'error',
         message: `Scan failed: ${error.response?.data?.detail || error.message}`
@@ -363,7 +328,6 @@ const Assets = () => {
       // Auto-hide notification after 5 seconds
       setTimeout(() => setScanNotification(null), 5000);
     } catch (error) {
-      console.error('Failed to clear assets:', error);
       setScanNotification({
         type: 'error',
         message: `Failed to clear assets: ${error.message || 'Unknown error'}`
@@ -833,16 +797,7 @@ const Assets = () => {
                             </h4>
                             {!recommendation && !isLoading && (
                               <button
-                                onClick={() => {
-                                  console.log('Generating recommendation for asset:', {
-                                    assetId,
-                                    asset_id: asset.asset_id,
-                                    asset_value: asset.asset_value,
-                                    currentRecommendations: misconfigurationRecommendations,
-                                    currentLoading: loadingRecommendations
-                                  });
-                                  fetchMisconfigurationRecommendation(assetId);
-                                }}
+                                onClick={() => fetchMisconfigurationRecommendation(assetId)}
                                 className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-full transition-colors"
                               >
                                 Generate
@@ -988,7 +943,6 @@ const Assets = () => {
                     
                     // Verify blob is not empty
                     if (!blob || (blob.size !== undefined && blob.size === 0)) {
-                      console.error('PDF blob is empty or invalid:', blob);
                       throw new Error('PDF file is empty');
                     }
                     
@@ -1002,8 +956,6 @@ const Assets = () => {
                     link.remove();
                     window.URL.revokeObjectURL(url);
                   } catch (error) {
-                    console.error('Failed to export detailed report:', error);
-                    console.error('Error details:', error.response || error);
                     alert(`Failed to export detailed report: ${error.message || 'Unknown error'}. Please try again.`);
                   }
                 }}
@@ -1158,10 +1110,7 @@ const Assets = () => {
                 </h3>
                 {!summaryRecommendation && !loadingSummaryRecommendation && (
                   <button
-                    onClick={() => {
-                      console.log('Generate button clicked for summary recommendation');
-                      fetchSummaryRecommendation();
-                    }}
+                    onClick={() => fetchSummaryRecommendation()}
                     className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-full transition-colors"
                   >
                     Generate
